@@ -1,6 +1,6 @@
 import sys
 
-if len(sys.argv) != 4:
+if len(sys.argv) != 5:
     forward_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
     backward_primer = "CCWGTWYTAGCHGGDGCWATYAC"
     primers = [forward_primer, backward_primer]
@@ -8,8 +8,10 @@ if len(sys.argv) != 4:
     output_file_path = './data/output.txt'
 
 else:
-    input_file_path = sys.argv[1]
-    output_file_path = sys.argv[2]
+    forward_primer = sys.argv[1]
+    backward_primer = sys.argv[2]
+    input_file_path = sys.argv[3]
+    output_file_path = sys.argv[4]
 
 
 with open(input_file_path, 'r') as input_file, open(output_file_path, 'w') as output_file:
