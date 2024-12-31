@@ -13,6 +13,7 @@ else:
     input_file_path = sys.argv[3]
     output_file_path = sys.argv[4]
 
+# Todo: convert primers to Regex or smth. Currently there are no matches as WHYD[...] will not appear in reads, obviously.
 
 with open(input_file_path, 'r') as input_file, open(output_file_path, 'w') as output_file:
 
