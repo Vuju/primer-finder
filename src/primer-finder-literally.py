@@ -32,7 +32,7 @@ if len(sys.argv) != 5:
     forward_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
     backward_primer = "CCWGTWYTAGCHGGDGCWATYAC"
     input_file_path = './data/DB.COX1.fna'
-    output_file_path = './data/output.txt'
+    output_file_path = './data/double-primer-matching.txt'
 else:
     forward_primer = sys.argv[1]
     backward_primer = sys.argv[2]
