@@ -1,3 +1,9 @@
+
+# Plan 1: implement triplet insert/delete
+# Plan 2: reformat input parameters
+# Plan 3: rework the traceback, especially the output
+
+
 def smith_waterman(primer, read, gap=-2, substitution_matrix=(lambda x, y: 2 if (x == y) else -1)):
 
     # construction
