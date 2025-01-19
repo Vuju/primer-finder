@@ -1,10 +1,20 @@
 
-# Plan 2: reformat input parameters
-# Plan 3: rework the traceback, especially the output
-
 
 def smith_waterman(primer, read, gap=-2, substitution_matrix=(lambda x, y: 2 if (x == y) else -1)):
+    """
+    An implementation of the Smith-Waterman algorithm for local sequence alignment.
+    Extended with the functionality to jump triplets.
+    :param primer: The first sequence. In my case a primer, hence the name.
+    :param read: The second sequence. In this case the read in which I want to find my primer sequence.
+    :param gap: The penalty value for skipping a triplet. Default -2.
+    :param substitution_matrix: The reward and penalty values from comparing two characters.
+    Has to be a function at the moment. Default +2 for match, -1 for mismatch.
+    :return max_score: the highest score in the final score-matrix
+    :return aligned_primer:the primer sequence with potential skips
+    :return aligned_read: the read sequence with potential skips
+    :return alignment_start_index_in_read: the starting index of the alignment within the read
 
+    """
     # construction
     rows = len(primer) + 1
     cols = len(read) + 1
@@ -29,7 +39,7 @@ def smith_waterman(primer, read, gap=-2, substitution_matrix=(lambda x, y: 2 if 
                 max_score = score_matrix[i][j]
                 max_pos = (i, j)
 
-    # traceback from ChatGPT, Todo: rework
+    # traceback
     aligned_primer = []
     aligned_read = []
     i, j = max_pos
