@@ -1,4 +1,6 @@
 import sys
+import time
+
 from smith_waterman import smith_waterman
 
 
@@ -32,6 +34,8 @@ else:
 currentRead = ""
 
 with open(input_file_path, 'r') as input_file, open(output_file_path, 'w') as output_file:
+    count = 1
+    start_time = time.time()
     for line_number, line in enumerate(input_file, start=1):
         if line_number % 2 == 1:
             currentRead = line
@@ -41,5 +45,8 @@ with open(input_file_path, 'r') as input_file, open(output_file_path, 'w') as ou
             b_score, b_primer, b_read, b_index = smith_waterman(backward_primer, read, -2, substitution_function)
             output_file.write(currentRead.replace('|', ';').replace(',', ';').strip() +
                               f"{f_score};{f_primer};{f_index};{b_score};{b_primer};{b_index}\n")
+        if line_number >= count * 200:
+            count += 1
+            print(f"{line_number} at time {time.time()-start_time}.\n")
 
 print(f"Output has been written to {output_file_path}")
