@@ -72,6 +72,6 @@ def smith_waterman(primer, read, gap=-2, substitution_function=(lambda p, r: 2 i
 
     aligned_primer = ''.join(reversed(aligned_primer))
     aligned_read = ''.join(reversed(aligned_read))
-    alignment_start_index_in_read = j
+    alignment_start_index_in_read = j - 1
 
     return max_score, aligned_primer, aligned_read, alignment_start_index_in_read
