@@ -10,7 +10,7 @@ def smith_waterman(primer, read, gap=-2, substitution_function=(lambda p, r: 2 i
     :param gap: The penalty value for skipping a triplet. Default -2.
     :param substitution_function: The reward and penalty values from comparing two characters.
     Has to be a function that accepts two characters to compare and returns a numerical value.
-    By default it returns +2 for a match, -1 for a mismatch.
+    By default, it returns +2 for a match, -1 for a mismatch.
     :return max_score: the highest score in the final score-matrix
     :return aligned_primer:the primer sequence with potential skips
     :return aligned_read: the read sequence with potential skips
