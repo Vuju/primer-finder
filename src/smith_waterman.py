@@ -28,8 +28,8 @@ def smith_waterman(primer, read, gap=-2, gap3 = -2, substitution_function=(lambd
     for i in range(1, rows):
         for j in range(1, cols):
             match_score = score_matrix[i - 1][j - 1] + (substitution_function(primer[i - 1], read[j - 1]))
-            delete = score_matrix[i - 1][j] + (gap)
-            insert = score_matrix[i][j - 1] + (gap)
+            delete = score_matrix[i - 1][j] + gap
+            insert = score_matrix[i][j - 1] + gap
 
             # calculate triplet jump value
             del3 = (score_matrix[i - 3][j] + gap3) if (i - 3 >= 0) else 0
