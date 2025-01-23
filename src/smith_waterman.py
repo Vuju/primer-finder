@@ -1,12 +1,13 @@
 
 
-def smith_waterman(primer, read, gap=-2, substitution_function=(lambda p, r: 2 if (p == r) else -1)):
+def smith_waterman(primer, read, gap=-2, gap3 = -2, substitution_function=(lambda p, r: 2 if (p == r) else -1)):
     """
     An implementation of the Smith-Waterman algorithm for local sequence alignment.
     Extended with the functionality to jump triplets.
     :param primer: The first sequence. In my case a primer, hence the name.
     :param read: The second sequence. In this case the read in which I want to find my primer sequence.
-    :param gap: The penalty value for skipping a triplet. Default -2.
+    :param gap: The penalty value for skipping a single nucleotide. Default -2.
+    :param gap3: The penalty value for skipping a triplet. Default -2.
     :param substitution_function: The reward and penalty values from comparing two characters.
     Has to be a function that accepts two characters to compare and returns a numerical value.
     By default it returns +2 for a match, -1 for a mismatch.
@@ -27,12 +28,12 @@ def smith_waterman(primer, read, gap=-2, substitution_function=(lambda p, r: 2 i
     for i in range(1, rows):
         for j in range(1, cols):
             match_score = score_matrix[i - 1][j - 1] + (substitution_function(primer[i - 1], read[j - 1]))
-            delete = score_matrix[i - 1][j] + (2 * gap)
-            insert = score_matrix[i][j - 1] + (2 * gap)
+            delete = score_matrix[i - 1][j] + (gap)
+            insert = score_matrix[i][j - 1] + (gap)
 
             # calculate triplet jump value
-            del3 = (score_matrix[i - 3][j] + gap) if (i - 3 >= 0) else 0
-            ins3 = (score_matrix[i][j - 3] + gap) if (j - 3 >= 0) else 0
+            del3 = (score_matrix[i - 3][j] + gap3) if (i - 3 >= 0) else 0
+            ins3 = (score_matrix[i][j - 3] + gap3) if (j - 3 >= 0) else 0
 
             score_matrix[i][j] = max(0, match_score, delete, insert, del3, ins3)
 
@@ -51,19 +52,19 @@ def smith_waterman(primer, read, gap=-2, substitution_function=(lambda p, r: 2 i
             aligned_read.append(read[j - 1])
             i -= 1
             j -= 1
-        elif score_matrix[i][j] == score_matrix[i - 1][j] + (2 * gap):
+        elif score_matrix[i][j] == score_matrix[i - 1][j] + gap:
             aligned_primer.append(primer[i - 1])
             aligned_read.append('-')
             i -= 1
-        elif score_matrix[i][j] == score_matrix[i][j - 1] + (2 * gap):
+        elif score_matrix[i][j] == score_matrix[i][j - 1] + gap:
             aligned_primer.append('-')
             aligned_read.append(read[j - 1])
             j -= 1
-        elif (i - 3 >= 0) and (score_matrix[i][j] == score_matrix[i - 3][j] + gap):
+        elif (i - 3 >= 0) and (score_matrix[i][j] == score_matrix[i - 3][j] + gap3):
             aligned_primer.append(primer[i - 3])
             aligned_read.append('---')
             i -= 3
-        elif (j - 3 >= 0) and (score_matrix[i][j] == score_matrix[i][j - 3] + gap):
+        elif (j - 3 >= 0) and (score_matrix[i][j] == score_matrix[i][j - 3] + gap3):
             aligned_primer.append('---')
             aligned_read.append(read[j - 3])
             j -= 3
