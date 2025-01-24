@@ -12,12 +12,12 @@ from primer_finder_regex import *
 ### Parameters
 
 proposed_offset = 200
-proposed_end_offset = 350
+proposed_end_offset = 300
 
 forward_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
 backward_primer = "CCWGTWYTAGCHGGDGCWATYAC"
 input_file_path = './data/DB.COX1.fna'
-output_file_path = './data/primer-finder-v2.2.csv'
+output_file_path = './data/primer-finder-fixed.csv'
 
 
 currentRead = ""
@@ -61,13 +61,17 @@ def process_pair(pair):
     read_metadata, line = pair
     read = line.strip()
     f_search_interval, b_search_interval = (0, len(read)), (0, len(read))
+    f_score = 0
+    b_score = 0
+    f_read = ''
+    b_read = ''
 
     # first check for exact matches
     f_index, f_end_index = find_exact_match(forward_primer_regex, read)
     if f_index != -1:
         f_score = len(forward_primer) * substitution_function('A', 'A')
         f_read = read[f_index:f_end_index]
-        b_search_interval = (f_end_index + proposed_offset, f_end_index + proposed_end_offset)
+        b_search_interval = (f_index + proposed_offset, f_index + proposed_end_offset)
 
     b_index, b_end_index = find_exact_match(backward_primer_regex, read[b_search_interval[0]:b_search_interval[1]])
     if b_index != -1:
@@ -75,9 +79,9 @@ def process_pair(pair):
         b_end_index += b_search_interval[0]
         b_score = len(backward_primer) * substitution_function('A', 'A')
         b_read = read[b_index:b_end_index]
-        f_search_interval = (b_index - proposed_end_offset, b_index - proposed_offset)
+        f_search_interval = (b_end_index - proposed_end_offset, b_end_index - proposed_offset)
 
-    # for each missing exact match, try smith waterman:
+        # for each missing exact match, try smith waterman:
     if f_index == -1:
         f_score, f_primer, f_read, f_index = smith_waterman(forward_primer,
                                                             read[f_search_interval[0]:f_search_interval[1]], -2, -2,
@@ -93,7 +97,7 @@ def process_pair(pair):
 
     with lock, open(output_file_path, 'a') as out_file:
         out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip() +
-                      f"{f_score};{f_read};{f_index};{b_score};{b_read};{b_index}\n")
+                       f"{f_score};{f_read};{f_index};{b_score};{b_read};{b_index}\n")
 
 
 
