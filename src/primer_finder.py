@@ -17,7 +17,7 @@ proposed_end_offset = 350
 forward_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
 backward_primer = "CCWGTWYTAGCHGGDGCWATYAC"
 input_file_path = './data/mini.fna'
-output_file_path = './data/primer-finder-mini.csv'
+output_file_path = './data/primer-finder-mini-2.csv'
 
 
 currentRead = ""

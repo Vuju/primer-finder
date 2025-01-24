@@ -18,22 +18,23 @@ def smith_waterman(primer, read, gap=-2, gap3 = -2, substitution_function=(lambd
 
     """
     # construction
-    rows = len(primer) + 1
-    cols = len(read) + 1
+    rows = len(primer) + 3
+    cols = len(read) + 3
+
     score_matrix = [[0] * cols for _ in range(rows)]
 
     max_score = 0
     max_pos = (0, 0)
 
-    for i in range(1, rows):
-        for j in range(1, cols):
-            match_score = score_matrix[i - 1][j - 1] + (substitution_function(primer[i - 1], read[j - 1]))
+    for i in range(3, rows):
+        for j in range(3, cols):
+            match_score = score_matrix[i - 1][j - 1] + (substitution_function(primer[i - 3], read[j - 3]))
             delete = score_matrix[i - 1][j] + gap
             insert = score_matrix[i][j - 1] + gap
 
             # calculate triplet jump value
-            del3 = (score_matrix[i - 3][j] + gap3) if (i - 3 >= 0) else 0
-            ins3 = (score_matrix[i][j - 3] + gap3) if (j - 3 >= 0) else 0
+            del3 = (score_matrix[i - 3][j] + gap3)
+            ins3 = (score_matrix[i][j - 3] + gap3)
 
             score_matrix[i][j] = max(0, match_score, delete, insert, del3, ins3)
 
@@ -47,32 +48,32 @@ def smith_waterman(primer, read, gap=-2, gap3 = -2, substitution_function=(lambd
     i, j = max_pos
 
     while i > 0 and j > 0 and score_matrix[i][j] > 0:
-        if score_matrix[i][j] == score_matrix[i - 1][j - 1] + (substitution_function(primer[i - 1], read[j - 1])):
-            aligned_primer.append(primer[i - 1])
-            aligned_read.append(read[j - 1])
+        if score_matrix[i][j] == score_matrix[i - 1][j - 1] + (substitution_function(primer[i - 3], read[j - 3])):
+            aligned_primer.append(primer[i - 3])
+            aligned_read.append(read[j - 3])
             i -= 1
             j -= 1
         elif score_matrix[i][j] == score_matrix[i - 1][j] + gap:
-            aligned_primer.append(primer[i - 1])
+            aligned_primer.append(primer[i - 3])
             aligned_read.append('-')
             i -= 1
         elif score_matrix[i][j] == score_matrix[i][j - 1] + gap:
             aligned_primer.append('-')
-            aligned_read.append(read[j - 1])
+            aligned_read.append(read[j - 3])
             j -= 1
         elif (i - 3 >= 0) and (score_matrix[i][j] == score_matrix[i - 3][j] + gap3):
-            aligned_primer.append(primer[i - 3])
+            aligned_primer.append(primer[i - 5])
             aligned_read.append('---')
             i -= 3
         elif (j - 3 >= 0) and (score_matrix[i][j] == score_matrix[i][j - 3] + gap3):
             aligned_primer.append('---')
-            aligned_read.append(read[j - 3])
+            aligned_read.append(read[j - 5])
             j -= 3
         else:
             raise Exception("Smith-Waterman traceback failed!")
 
     aligned_primer = ''.join(reversed(aligned_primer))
     aligned_read = ''.join(reversed(aligned_read))
-    alignment_start_index_in_read = j - 1
+    alignment_start_index_in_read = j - 3
 
     return max_score, aligned_primer, aligned_read, alignment_start_index_in_read
