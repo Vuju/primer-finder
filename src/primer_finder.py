@@ -16,8 +16,8 @@ proposed_end_offset = 350
 
 forward_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
 backward_primer = "CCWGTWYTAGCHGGDGCWATYAC"
-input_file_path = './data/DB.COX1.fna'
-output_file_path = './data/primer-finder.csv'
+input_file_path = './data/mini.fna'
+output_file_path = './data/primer-finder-mini.csv'
 
 
 currentRead = ""
@@ -65,7 +65,7 @@ def process_pair(pair):
     # first check for exact matches
     f_index, f_end_index = find_exact_match(forward_primer_regex, read)
     if f_index != -1:
-        f_score = len(forward_primer)
+        f_score = len(forward_primer) * substitution_function('A', 'A')
         f_read = read[f_index:f_end_index]
         b_search_interval = (f_end_index + proposed_offset, f_end_index + proposed_end_offset)
 
@@ -73,7 +73,7 @@ def process_pair(pair):
     if b_index != -1:
         b_index += b_search_interval[0]
         b_end_index += b_search_interval[0]
-        b_score = len(backward_primer)
+        b_score = len(backward_primer) * substitution_function('A', 'A')
         b_read = read[b_index:b_end_index]
         f_search_interval = (b_index - proposed_end_offset, b_index - proposed_offset)
 
