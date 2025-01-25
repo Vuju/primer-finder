@@ -12,12 +12,14 @@ from primer_finder_regex import *
 ### Parameters
 
 proposed_offset = 200
-proposed_end_offset = 300
+proposed_end_offset = 280
+
+sw_score_cutoff = 0.8
 
 forward_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
 backward_primer = "CCWGTWYTAGCHGGDGCWATYAC"
 input_file_path = './data/DB.COX1.fna'
-output_file_path = './data/primer-finder-fixed.csv'
+output_file_path = './data/primer-finder-fixed2.csv'
 
 
 currentRead = ""
@@ -81,14 +83,15 @@ def process_pair(pair):
         b_read = read[b_index:b_end_index]
         f_search_interval = (b_end_index - proposed_end_offset, b_end_index - proposed_offset)
 
-        # for each missing exact match, try smith waterman:
+    # for each missing exact match, try smith waterman:
     if f_index == -1:
         f_score, f_primer, f_read, f_index = smith_waterman(forward_primer,
                                                             read[f_search_interval[0]:f_search_interval[1]], -2, -2,
                                                             substitution_function)
         f_index += f_search_interval[0]
-        if b_index == -1:
+        if (b_index == -1) and (f_score > (len(forward_primer) * substitution_function('A', 'A'))):
             b_search_interval = (f_index + len(f_read) + proposed_offset, f_index + len(f_read) + proposed_end_offset)
+
     if b_index == -1:
         b_score, b_primer, b_read, b_index = smith_waterman(backward_primer,
                                                             read[b_search_interval[0]:b_search_interval[1]], -2, -2,
@@ -97,7 +100,7 @@ def process_pair(pair):
 
     with lock, open(output_file_path, 'a') as out_file:
         out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip() +
-                       f"{f_score};{f_read};{f_index};{b_score};{b_read};{b_index}\n")
+                       f"{f_score};{f_read};{f_index};{b_score};{b_read};{b_index};{read}\n")
 
 
 
@@ -112,7 +115,7 @@ if __name__ == "__main__":
 
     with open(output_file_path, 'w') as output_file:
         output_file.write(
-            "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index\n"
+            "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read\n"
         )
     pairs = read_pairs(input_file_path)
     lock = Lock()
