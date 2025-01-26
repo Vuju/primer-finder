@@ -1,12 +1,12 @@
 import sys
-import time
 from multiprocessing import Pool, Lock
 
 from smith_waterman import smith_waterman
 from primer_finder_regex import *
+from match_result import MatchResult
 
-
-# Task 3: Implement additional gzip support
+# optional: Implement additional gzip support
+# optional: improve offsets to be more accurate
 
 
 ### Parameters
@@ -16,15 +16,14 @@ proposed_end_offset = 280
 
 sw_score_cutoff = 0.8
 
-forward_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
-backward_primer = "CCWGTWYTAGCHGGDGCWATYAC"
+f_primer = "GGDACWGGWTGAACWGTWTAYCCHCC"
+b_primer = "CCWGTWYTAGCHGGDGCWATYAC"
 input_file_path = './data/DB.COX1.fna'
-output_file_path = './data/primer-finder-fixed2.csv'
-
+output_file_path = './data/primer-finder-fixed3.csv'
 
 currentRead = ""
-forward_primer_regex = regex_builder(forward_primer)
-backward_primer_regex = regex_builder(backward_primer)
+f_primer_regex = regex_builder(f_primer)
+b_primer_regex = regex_builder(b_primer)
 
 
 ### Function definitions
@@ -42,6 +41,7 @@ def substitution_function(p, r):
         case default:
             raise Exception(f"unknown literal in read sequence: '{r}'")
 
+
 def read_pairs(file_path):
     with open(file_path, 'r') as file:
         while True:
@@ -51,10 +51,32 @@ def read_pairs(file_path):
                 break
             yield line1, line2
 
+
 def init(l):
     global lock
     lock = l
 
+
+def write_output_to_file(read_metadata, forward_match, backward_match, read):
+    with lock, open(output_file_path, 'a') as out_file:
+        out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip() +
+                       f"{forward_match.score};{forward_match.read};{forward_match.start_index};" +
+                       f"{backward_match.score};{backward_match.read};{backward_match.start_index};{read}\n")
+
+
+def compute_regex_match(primer, primer_regex, read):
+    score = 0
+    read_match = ''
+    index, end_index = find_exact_match(primer_regex, read)
+    if index != -1:
+        score = len(primer) * substitution_function('A', 'A')
+        read_match = read[index:end_index]
+    return MatchResult(score, read_match, index, end_index)
+
+
+def compute_smith_waterman(primer, read, skip, skip3, substitution):
+    score, _, read_match, index = smith_waterman(primer, read, skip, skip3, substitution)
+    return MatchResult(score, read_match, index, index + len(read))
 
 
 ### the main processing function
@@ -63,53 +85,43 @@ def process_pair(pair):
     read_metadata, line = pair
     read = line.strip()
     f_search_interval, b_search_interval = (0, len(read)), (0, len(read))
-    f_score = 0
-    b_score = 0
-    f_read = ''
-    b_read = ''
 
     # first check for exact matches
-    f_index, f_end_index = find_exact_match(forward_primer_regex, read)
-    if f_index != -1:
-        f_score = len(forward_primer) * substitution_function('A', 'A')
-        f_read = read[f_index:f_end_index]
-        b_search_interval = (f_index + proposed_offset, f_index + proposed_end_offset)
+    f_match = compute_regex_match(f_primer, f_primer_regex, read)
+    if f_match.start_index != -1:
+        b_search_interval = (f_match.start_index + proposed_offset, f_match.start_index + proposed_end_offset)
 
-    b_index, b_end_index = find_exact_match(backward_primer_regex, read[b_search_interval[0]:b_search_interval[1]])
-    if b_index != -1:
-        b_index += b_search_interval[0]
-        b_end_index += b_search_interval[0]
-        b_score = len(backward_primer) * substitution_function('A', 'A')
-        b_read = read[b_index:b_end_index]
-        f_search_interval = (b_end_index - proposed_end_offset, b_end_index - proposed_offset)
+    b_match = compute_regex_match(b_primer, b_primer_regex, read[b_search_interval[0]:b_search_interval[1]])
+    if b_match.start_index != -1:
+        b_match.start_index += b_search_interval[0]
+        b_match.end_index += b_search_interval[0]
+        f_search_interval = (b_match.end_index - proposed_end_offset, b_match.end_index - proposed_offset)
 
     # for each missing exact match, try smith waterman:
-    if f_index == -1:
-        f_score, f_primer, f_read, f_index = smith_waterman(forward_primer,
-                                                            read[f_search_interval[0]:f_search_interval[1]], -2, -2,
-                                                            substitution_function)
-        f_index += f_search_interval[0]
-        if (b_index == -1) and (f_score > (len(forward_primer) * substitution_function('A', 'A'))):
-            b_search_interval = (f_index + len(f_read) + proposed_offset, f_index + len(f_read) + proposed_end_offset)
+    if f_match.start_index == -1:
+        f_match = compute_smith_waterman(f_primer, read[f_search_interval[0]:f_search_interval[1]], -2, -2, substitution_function)
+        f_match.start_index += f_search_interval[0]
+        f_match.end_index += f_search_interval[0]
 
-    if b_index == -1:
-        b_score, b_primer, b_read, b_index = smith_waterman(backward_primer,
-                                                            read[b_search_interval[0]:b_search_interval[1]], -2, -2,
-                                                            substitution_function)
-        b_index += b_search_interval[0]
+        score_threshold = len(f_primer) * substitution_function('A', 'A') * sw_score_cutoff
 
-    with lock, open(output_file_path, 'a') as out_file:
-        out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip() +
-                       f"{f_score};{f_read};{f_index};{b_score};{b_read};{b_index};{read}\n")
+        if (b_match.start_index == -1) and (f_match.score > score_threshold):
+            b_search_interval = (f_match.start_index + proposed_offset, f_match.start_index + proposed_end_offset)
 
+    if b_match.start_index == -1:
+        b_match = compute_smith_waterman(b_primer, read[b_search_interval[0]:b_search_interval[1]], -2, -2, substitution_function)
+        b_match.start_index += b_search_interval[0]
+        b_match.end_index += b_search_interval[0]
+
+    write_output_to_file(read_metadata, f_match, b_match, read)
 
 
 ### main script
 
 if __name__ == "__main__":
     if len(sys.argv) == 5:
-        forward_primer = sys.argv[1]
-        backward_primer = sys.argv[2]
+        f_primer = sys.argv[1]
+        b_primer = sys.argv[2]
         input_file_path = sys.argv[3]
         output_file_path = sys.argv[4]
 
