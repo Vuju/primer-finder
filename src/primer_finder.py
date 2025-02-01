@@ -99,7 +99,7 @@ def process_pair(args, pair):
     if b_match.start_index != -1:
         b_match.start_index += b_search_interval[0]
         b_match.end_index += b_search_interval[0]
-        f_search_interval = (b_match.end_index - args.proposed_end_offset, b_match.end_index - args.proposed_offset)
+        f_search_interval = (max(0, b_match.end_index - args.proposed_end_offset), max(0, b_match.end_index - args.proposed_offset))
 
     # for each missing exact match, try smith waterman:
     if f_match.start_index == -1:
