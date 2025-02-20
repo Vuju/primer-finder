@@ -1,4 +1,4 @@
-
+# todo explore parameter space
 
 def smith_waterman(primer, read, gap=-2, gap3=-2, substitution_function=(lambda p, r: 2 if (p == r) else -1)):
     """

@@ -1,5 +1,6 @@
 from Bio.Seq import Seq
 
+# todo: extend codons to multiples of 3, because Biopython wants me to.
 
 def find_orf(sequence):
     possibilities = list_possible_orf(sequence)
