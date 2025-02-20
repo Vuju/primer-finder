@@ -1,30 +1,34 @@
-import sys
 import argparse
+import gzip
 from functools import partial
 from multiprocessing import Pool, Lock
+from typing import TextIO
 
 from smith_waterman import smith_waterman
 from primer_finder_regex import *
 from match_result import MatchResult
 
-# optional: Implement additional gzip support
 # optional: improve offsets to be more accurate
+# optional: create options.ini creation + parameterization?
+
+# todo: primers and offsets as files --> check all reads for all pairs with respective offset
+# todo: from two lines to biopython parser (since read can be multiline with ~60 char per line)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process sequence alignment parameters.")
 
-    parser.add_argument("--proposed_offset", type=int, default=200,
-                        help="Proposed start offset for alignment (default: 200)")
-    parser.add_argument("--proposed_end_offset", type=int, default=280,
-                        help="Proposed end offset for alignment (default: 280)")
+    parser.add_argument("--proposed_offset", type=int, default=180,
+                        help="Proposed start offset for alignment (default: 180)")
+    parser.add_argument("--proposed_end_offset", type=int, default=260,
+                        help="Proposed end offset for alignment (default: 260)")
 
     parser.add_argument("--sw_score_cutoff", type=float, default=0.8, help="Smith-Waterman score cutoff (default: 0.8)")
 
     parser.add_argument("--f_primer", type=str, default="GGDACWGGWTGAACWGTWTAYCCHCC", help="Forward primer sequence")
     parser.add_argument("--b_primer", type=str, default="CCWGTWYTAGCHGGDGCWATYAC", help="Backward primer sequence")
 
-    parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna", help="Path to input sequence file")
-    parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-test.csv",
+    parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna.gz", help="Path to input sequence file")
+    parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-13-02.csv",
                         help="Path to output results file")
 
     return parser.parse_args()
@@ -47,13 +51,18 @@ def substitution_function(p, r):
 
 
 def read_pairs(file_path):
-    with open(file_path, 'r') as file:
-        while True:
-            line1 = file.readline()
-            line2 = file.readline()
-            if not line1 or not line2:
-                break
-            yield line1, line2
+    file: TextIO
+    if file_path.endswith('.gz'):
+        file = gzip.open(file_path, 'rt')
+    else:
+        file = open(file_path, 'r', encoding="UTF-8")
+
+    while True:
+        line1 = file.readline()
+        line2 = file.readline()
+        if not line1 or not line2:
+            break
+        yield line1, line2
 
 
 def init(l):
@@ -90,18 +99,19 @@ def process_pair(args, pair):
     read = line.strip()
     f_search_interval, b_search_interval = (0, len(read)), (0, len(read))
 
-    # first check for exact matches
+    ## first check for exact matches
     f_match = compute_regex_match(args.f_primer, args.f_primer_regex, read)
     if f_match.start_index != -1:
-        b_search_interval = (f_match.start_index + args.proposed_offset, f_match.start_index + args.proposed_end_offset)
+        b_search_interval = (f_match.end_index + args.proposed_offset, f_match.end_index + args.proposed_end_offset)
 
     b_match = compute_regex_match(args.b_primer, args.b_primer_regex, read[b_search_interval[0]:b_search_interval[1]])
     if b_match.start_index != -1:
         b_match.start_index += b_search_interval[0]
         b_match.end_index += b_search_interval[0]
-        f_search_interval = (max(0, b_match.end_index - args.proposed_end_offset), max(0, b_match.end_index - args.proposed_offset))
+        f_search_interval = (max(0, b_match.start_index - args.proposed_end_offset), max(0, b_match.start_index - args.proposed_offset))
 
-    # for each missing exact match, try smith waterman:
+
+    ## for each missing exact match, try smith waterman:
     if f_match.start_index == -1:
         f_match = compute_smith_waterman(args.f_primer, read[f_search_interval[0]:f_search_interval[1]], -2, -2, substitution_function)
         f_match.start_index += f_search_interval[0]
@@ -110,7 +120,7 @@ def process_pair(args, pair):
         score_threshold = len(args.f_primer) * substitution_function('A', 'A') * args.sw_score_cutoff
 
         if (b_match.start_index == -1) and (f_match.score > score_threshold):
-            b_search_interval = (f_match.start_index + args.proposed_offset, f_match.start_index + args.proposed_end_offset)
+            b_search_interval = (f_match.end_index + args.proposed_offset, f_match.end_index + args.proposed_end_offset)
 
     if b_match.start_index == -1:
         b_match = compute_smith_waterman(args.b_primer, read[b_search_interval[0]:b_search_interval[1]], -2, -2, substitution_function)
@@ -125,6 +135,7 @@ def process_pair(args, pair):
 currentRead = ""
 
 if __name__ == "__main__":
+    # todo possbly try chunking
     args = parse_arguments()
     args.f_primer_regex = regex_builder(args.f_primer)
     args.b_primer_regex = regex_builder(args.b_primer)
@@ -133,6 +144,7 @@ if __name__ == "__main__":
         output_file.write(
             "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read\n"
         )
+
     pairs = read_pairs(args.input_file_path)
     lock = Lock()
     worker = partial(process_pair, args)
