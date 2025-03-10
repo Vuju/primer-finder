@@ -22,16 +22,47 @@ def parse_arguments():
     parser.add_argument("--proposed_end_offset", type=int, default=260,
                         help="Proposed end offset for alignment (default: 260)")
 
+    parser.add_argument("--search_area", type=float, default=0.2, help="This value will determine, "
+                                                        "how much extra area the smith waterman algorithm will search, "
+                                                        "if the other primer has already been found with enough certainty (set by '--sw_cutoff').")
     parser.add_argument("--sw_score_cutoff", type=float, default=0.8, help="Smith-Waterman score cutoff (default: 0.8)")
 
     parser.add_argument("--f_primer", type=str, default="GGDACWGGWTGAACWGTWTAYCCHCC", help="Forward primer sequence")
     parser.add_argument("--b_primer", type=str, default="CCWGTWYTAGCHGGDGCWATYAC", help="Backward primer sequence")
+
+    parser.add_argument("--primer_information", type=str, default="./data/primer_information.csv", help="CSV list of forward and reverse primer sequence, as well as the 'normal' distance inbetween".)
 
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna.gz", help="Path to input sequence file")
     parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-13-02.csv",
                         help="Path to output results file")
 
     return parser.parse_args()
+
+
+def compute_arguments():
+    args = parse_arguments()
+    args.primer_data = []
+
+    with open(args.primer_information, "r") as primer_info_file:
+        line = primer_info_file.readline()
+        line_data = line.split(",")
+        line_data = [s.strip() for s in line_data]
+
+        f_primer_regex = regex_builder(line_data[0])
+        b_primer_regex = regex_builder(line_data[1])
+
+        entry = {
+            "f_primer": line_data[0],
+            "b_primer": line_data[1],
+            "distance": line_data[2],
+            "f_primer_regex": f_primer_regex,
+            "b_primer_regex": b_primer_regex
+        }
+        args.primer_data.append(entry)
+
+
+    return args
+
 
 
 ### Function definitions
@@ -136,9 +167,7 @@ currentRead = ""
 
 if __name__ == "__main__":
     # todo possbly try chunking
-    args = parse_arguments()
-    args.f_primer_regex = regex_builder(args.f_primer)
-    args.b_primer_regex = regex_builder(args.b_primer)
+    args = compute_arguments()
 
     with open(args.output_file_path, 'w') as output_file:
         output_file.write(
