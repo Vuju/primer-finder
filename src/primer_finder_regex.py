@@ -4,23 +4,39 @@ def regex_builder(initialString):
     regexString = ""
     for char in initialString:
         match char:
-            # skipping USMKRBVN since they dont appear in my primers (yet) (https://en.wikipedia.org/wiki/Nucleic_acid_notation)
+            # (see reference table: https://en.wikipedia.org/wiki/Nucleic_acid_notation)
             case 'A':
                 regexString += "A"
-            case 'T':
-                regexString += "T"
             case 'C':
                 regexString += "C"
             case 'G':
                 regexString += "G"
+            case 'T':
+                regexString += "T"
+            case 'U':
+                regexString += "T"
             case 'W':
                 regexString += "[AT]"
+            case 'S':
+                regexString += "[CG]"
+            case 'M':
+                regexString += "[AC]"
+            case 'K':
+                regexString += "[GT]"
+            case 'R':
+                regexString += "[AG]"
             case 'Y':
                 regexString += "[CT]"
+            case 'B':
+                regexString += "[CGT]"
             case 'D':
                 regexString += "[AGT]"
             case 'H':
                 regexString += "[ACT]"
+            case 'V':
+                regexString += "[ACG]"
+            case 'N':
+                regexString += "[ACGT]"
             case _:
                 print(f"Unable to process primer. Didn't find {char}.")
     return regexString
