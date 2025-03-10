@@ -4,9 +4,10 @@ from functools import partial
 from multiprocessing import Pool, Lock
 from typing import TextIO
 
-from smith_waterman import smith_waterman
+from src.smith_waterman import smith_waterman
 from primer_finder_regex import *
 from match_result import MatchResult
+from src.primer_data_dto import PrimerDataDTO, get_primer_dto_from_args
 
 # optional: improve offsets to be more accurate
 # optional: create options.ini creation + parameterization?
@@ -17,21 +18,13 @@ from match_result import MatchResult
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process sequence alignment parameters.")
 
-    parser.add_argument("--proposed_offset", type=int, default=180,
-                        help="Proposed start offset for alignment (default: 180)")
-    parser.add_argument("--proposed_end_offset", type=int, default=260,
-                        help="Proposed end offset for alignment (default: 260)")
-
     parser.add_argument("--search_area", type=float, default=0.2, help="This value will determine, "
                                                         "how much extra area the smith waterman algorithm will search, "
                                                         "if the other primer has already been found with enough certainty (set by '--sw_cutoff').")
     parser.add_argument("--sw_score_cutoff", type=float, default=0.8, help="Smith-Waterman score cutoff (default: 0.8)")
 
-    parser.add_argument("--f_primer", type=str, default="GGDACWGGWTGAACWGTWTAYCCHCC", help="Forward primer sequence")
-    parser.add_argument("--b_primer", type=str, default="CCWGTWYTAGCHGGDGCWATYAC", help="Backward primer sequence")
-
     parser.add_argument("--primer_information", type=str, default="./data/primer_information.csv",
-                        help="CSV list of forward and reverse primer sequence, as well as the 'normal' distance inbetween.")
+                        help="CSV list of forward and reverse primer sequence, as well as the expected distance inbetween.")
 
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna.gz", help="Path to input sequence file")
     parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-13-02.csv",
@@ -45,21 +38,21 @@ def compute_arguments():
     args.primer_data = []
 
     with open(args.primer_information, "r") as primer_info_file:
-        line = primer_info_file.readline()
-        line_data = line.split(",")
-        line_data = [s.strip() for s in line_data]
+        for line in primer_info_file.readlines():
+            line_data = line.split(",")
+            line_data = [s.strip() for s in line_data]
 
-        f_primer_regex = regex_builder(line_data[0])
-        b_primer_regex = regex_builder(line_data[1])
+            f_primer_regex = regex_builder(line_data[0])
+            b_primer_regex = regex_builder(line_data[1])
 
-        entry = {
-            "f_primer": line_data[0],
-            "b_primer": line_data[1],
-            "distance": line_data[2],
-            "f_primer_regex": f_primer_regex,
-            "b_primer_regex": b_primer_regex
-        }
-        args.primer_data.append(entry)
+            entry = {
+                "f_primer": line_data[0],
+                "b_primer": line_data[1],
+                "distance": line_data[2],
+                "f_primer_regex": f_primer_regex,
+                "b_primer_regex": b_primer_regex
+            }
+            args.primer_data.append(entry)
 
 
     return args
@@ -137,40 +130,44 @@ def compute_smith_waterman(primer, read, skip, skip3, substitution):
 
 ### the main processing function
 
-def process_pair(args, pair):
+def process_pair(primer_data: PrimerDataDTO, pair):
+
+    offset = int(primer_data.distance * primer_data.search_area)
+    distance = primer_data.distance
+
     read_metadata, sequence = pair
     read = sequence.strip()
     f_search_interval, b_search_interval = (0, len(read)), (0, len(read))
 
     ## first check for exact matches
-    f_match = compute_regex_match(args.f_primer, args.f_primer_regex, read)
+    f_match = compute_regex_match(primer_data.f_primer, primer_data.f_primer_regex, read)
     if f_match.start_index != -1:
-        b_search_interval = (f_match.end_index + args.proposed_offset, f_match.end_index + args.proposed_end_offset)
+        b_search_interval = (f_match.end_index + distance - offset, f_match.end_index + distance + len(primer_data.b_primer) + offset)
 
-    b_match = compute_regex_match(args.b_primer, args.b_primer_regex, read[b_search_interval[0]:b_search_interval[1]])
+    b_match = compute_regex_match(primer_data.b_primer, primer_data.b_primer_regex, read[b_search_interval[0]:b_search_interval[1]])
     if b_match.start_index != -1:
         b_match.start_index += b_search_interval[0]
         b_match.end_index += b_search_interval[0]
-        f_search_interval = (max(0, b_match.start_index - args.proposed_end_offset), max(0, b_match.start_index - args.proposed_offset))
+        f_search_interval = (max(0, b_match.start_index - distance + offset), max(0, b_match.start_index - distance - len(primer_data.f_primer) + offset))
 
 
     ## for each missing exact match, try smith waterman:
     if f_match.start_index == -1:
-        f_match = compute_smith_waterman(args.f_primer, read[f_search_interval[0]:f_search_interval[1]], -2, -2, substitution_function)
+        f_match = compute_smith_waterman(primer_data.f_primer, read[f_search_interval[0]:f_search_interval[1]], -2, -2, substitution_function)
         f_match.start_index += f_search_interval[0]
         f_match.end_index += f_search_interval[0]
 
-        score_threshold = len(args.f_primer) * substitution_function('A', 'A') * args.sw_score_cutoff
+        score_threshold = len(primer_data.f_primer) * substitution_function('A', 'A') * primer_data.sw_score_cutoff
 
         if (b_match.start_index == -1) and (f_match.score > score_threshold):
-            b_search_interval = (f_match.end_index + args.proposed_offset, f_match.end_index + args.proposed_end_offset)
+            b_search_interval = (f_match.end_index + distance - offset, f_match.end_index + distance + len(primer_data.b_primer) + offset)
 
     if b_match.start_index == -1:
-        b_match = compute_smith_waterman(args.b_primer, read[b_search_interval[0]:b_search_interval[1]], -2, -2, substitution_function)
+        b_match = compute_smith_waterman(primer_data.b_primer, read[b_search_interval[0]:b_search_interval[1]], -2, -2, substitution_function)
         b_match.start_index += b_search_interval[0]
         b_match.end_index += b_search_interval[0]
 
-    write_output_to_file(args.output_file_path, read_metadata, f_match, b_match, read)
+    write_output_to_file(primer_data.output_file_path, read_metadata, f_match, b_match, read)
 
 
 ### main script
@@ -178,18 +175,21 @@ def process_pair(args, pair):
 currentRead = ""
 
 if __name__ == "__main__":
-    # todo possbly try chunking
+    # todo possibly try chunking
     args = compute_arguments()
+    for i, primer_pair in enumerate(args.primer_data):
+        primer_data = get_primer_dto_from_args(args, i)
 
-    with open(args.output_file_path, 'w') as output_file:
-        output_file.write(
-            "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read\n"
-        )
+        # todo separate into different files?
+        with open(primer_data.output_file_path, 'w') as output_file:
+            output_file.write(
+                "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read\n"
+            )
 
-    pairs = read_pairs(args.input_file_path)
-    lock = Lock()
-    worker = partial(process_pair, args)
-    with Pool(initializer=init, initargs=(lock,)) as pool:
-        pool.map(worker, pairs)
+        pairs = read_pairs(primer_data.input_file_path)
+        lock = Lock()
+        worker = partial(process_pair, primer_data)
+        with Pool(initializer=init, initargs=(lock,)) as pool:
+            pool.map(worker, pairs)
 
-    print(f"Output has been written to {args.output_file_path}")
+    print(f"Output has been written to {primer_data.output_file_path}")
