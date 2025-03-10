@@ -30,7 +30,8 @@ def parse_arguments():
     parser.add_argument("--f_primer", type=str, default="GGDACWGGWTGAACWGTWTAYCCHCC", help="Forward primer sequence")
     parser.add_argument("--b_primer", type=str, default="CCWGTWYTAGCHGGDGCWATYAC", help="Backward primer sequence")
 
-    parser.add_argument("--primer_information", type=str, default="./data/primer_information.csv", help="CSV list of forward and reverse primer sequence, as well as the 'normal' distance inbetween".)
+    parser.add_argument("--primer_information", type=str, default="./data/primer_information.csv",
+                        help="CSV list of forward and reverse primer sequence, as well as the 'normal' distance inbetween.")
 
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna.gz", help="Path to input sequence file")
     parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-13-02.csv",
@@ -89,11 +90,22 @@ def read_pairs(file_path):
         file = open(file_path, 'r', encoding="UTF-8")
 
     while True:
-        line1 = file.readline()
-        line2 = file.readline()
-        if not line1 or not line2:
+        metadata_line = file.readline()
+        sequence_lines = file.readline()
+        if not metadata_line or not sequence_lines:
             break
-        yield line1, line2
+        while True:
+            pos = file.tell()
+            line_next = file.readline()
+            if not lineNext:
+                break
+            if line_next.startswith('>'):
+                f.seek(pos)
+                break
+            else:
+                sequence_lines += lineNext.strip()
+
+        yield metadata_line, sequence_lines
 
 
 def init(l):
@@ -126,8 +138,8 @@ def compute_smith_waterman(primer, read, skip, skip3, substitution):
 ### the main processing function
 
 def process_pair(args, pair):
-    read_metadata, line = pair
-    read = line.strip()
+    read_metadata, sequence = pair
+    read = sequence.strip()
     f_search_interval, b_search_interval = (0, len(read)), (0, len(read))
 
     ## first check for exact matches
