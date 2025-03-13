@@ -23,7 +23,7 @@ def parse_arguments():
                                                         "if the other primer has already been found with enough certainty (set by '--sw_cutoff').")
     parser.add_argument("--sw_score_cutoff", type=float, default=0.8, help="Smith-Waterman score cutoff (default: 0.8)")
 
-    parser.add_argument("--primer_information", type=str, default="./data/primer_information.csv",
+    parser.add_argument("--primer_information", type=str, default="./data/primer-information.csv",
                         help="CSV list of forward and reverse primer sequence, as well as the expected distance inbetween.")
 
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna.gz", help="Path to input sequence file")
@@ -90,13 +90,13 @@ def read_pairs(file_path):
         while True:
             pos = file.tell()
             line_next = file.readline()
-            if not lineNext:
+            if not line_next:
                 break
             if line_next.startswith('>'):
-                f.seek(pos)
+                file.seek(pos)
                 break
             else:
-                sequence_lines += lineNext.strip()
+                sequence_lines += line_next.strip()
 
         yield metadata_line, sequence_lines
 
@@ -131,7 +131,6 @@ def compute_smith_waterman(primer, read, skip, skip3, substitution):
 ### the main processing function
 
 def process_pair(primer_data: PrimerDataDTO, pair):
-
     offset = int(primer_data.distance * primer_data.search_area)
     distance = primer_data.distance
 
@@ -179,7 +178,7 @@ if __name__ == "__main__":
     args = compute_arguments()
     for i, primer_pair in enumerate(args.primer_data):
         primer_data = get_primer_dto_from_args(args, i)
-
+        print(primer_data)
         # todo separate into different files?
         with open(primer_data.output_file_path, 'w') as output_file:
             output_file.write(
