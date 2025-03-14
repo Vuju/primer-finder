@@ -28,7 +28,7 @@ def parse_arguments():
                         help="CSV list of forward and reverse primer sequence, as well as the expected distance inbetween.")
 
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna", help="Path to input sequence file")
-    parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-13-02.csv",
+    parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-result.csv",
                         help="Path to output results file")
 
     return parser.parse_args()
