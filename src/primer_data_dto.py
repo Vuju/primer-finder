@@ -22,7 +22,7 @@ def get_primer_dto_from_args(args, index):
         f_primer_regex=args.primer_data[index]["f_primer_regex"],
         b_primer=args.primer_data[index]["b_primer"],
         b_primer_regex=args.primer_data[index]["b_primer_regex"],
-        distance=args.primer_data[index]["distance"],
+        distance=int(args.primer_data[index]["distance"]),
         search_area=args.search_area,
         sw_score_cutoff=args.sw_score_cutoff,
         input_file_path=args.input_file_path,

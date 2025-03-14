@@ -1,5 +1,6 @@
 import argparse
 import gzip
+import pickle
 from functools import partial
 from multiprocessing import Pool, Lock
 from typing import TextIO
@@ -26,7 +27,7 @@ def parse_arguments():
     parser.add_argument("--primer_information", type=str, default="./data/primer-information.csv",
                         help="CSV list of forward and reverse primer sequence, as well as the expected distance inbetween.")
 
-    parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna.gz", help="Path to input sequence file")
+    parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna", help="Path to input sequence file")
     parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-13-02.csv",
                         help="Path to output results file")
 
@@ -61,7 +62,7 @@ def compute_arguments():
 
 ### Function definitions
 
-def substitution_function(p, r):
+def substitution_function(p, r) -> float:
     match r:
         case 'A':
             return 2 if p in "AWMRDHVN" else -1
@@ -82,6 +83,7 @@ def read_pairs(file_path):
     else:
         file = open(file_path, 'r', encoding="UTF-8")
 
+    print(file)
     while True:
         metadata_line = file.readline()
         sequence_lines = file.readline()
@@ -91,6 +93,8 @@ def read_pairs(file_path):
             pos = file.tell()
             line_next = file.readline()
             if not line_next:
+                break
+            if line_next.strip() == "":
                 break
             if line_next.startswith('>'):
                 file.seek(pos)
