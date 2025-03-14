@@ -1,14 +1,18 @@
 import argparse
 import gzip
-import pickle
+import logging
+
 from functools import partial
 from multiprocessing import Pool, Lock
 from typing import TextIO
+from tqdm import tqdm
 
 from src.smith_waterman import smith_waterman
 from primer_finder_regex import *
 from match_result import MatchResult
 from src.primer_data_dto import PrimerDataDTO, get_primer_dto_from_args
+
+logger = logging.getLogger(__name__)
 
 # optional: improve offsets to be more accurate
 # optional: create options.ini creation + parameterization?
@@ -83,7 +87,6 @@ def read_pairs(file_path):
     else:
         file = open(file_path, 'r', encoding="UTF-8")
 
-    print(file)
     while True:
         metadata_line = file.readline()
         sequence_lines = file.readline()
@@ -177,12 +180,24 @@ def process_pair(primer_data: PrimerDataDTO, pair):
 
 currentRead = ""
 
+
+def get_number_of_sequences_in(input_file_path):
+    count = 0
+    with open(input_file_path, 'r') as input_file:
+        for line in input_file.readlines():
+            if line.startswith(('>')):
+                count += 1
+    return count
+
+
 if __name__ == "__main__":
+    logging.basicConfig(filename='primer-finder_log.log', level=logging.INFO)
+    logging.getLogger().addHandler(logging.StreamHandler())
+
     # todo possibly try chunking
     args = compute_arguments()
     for i, primer_pair in enumerate(args.primer_data):
         primer_data = get_primer_dto_from_args(args, i)
-        print(primer_data)
         # todo separate into different files?
         with open(primer_data.output_file_path, 'w') as output_file:
             output_file.write(
@@ -191,8 +206,13 @@ if __name__ == "__main__":
 
         pairs = read_pairs(primer_data.input_file_path)
         lock = Lock()
+
+        logger.info(f"Getting length of input {i+1}.")
+        pbar = tqdm(total=get_number_of_sequences_in(primer_data.input_file_path))
         worker = partial(process_pair, primer_data)
         with Pool(initializer=init, initargs=(lock,)) as pool:
-            pool.map(worker, pairs)
+            for _ in pool.imap(worker, pairs, chunksize=100):
+                pbar.update(1)
+        pbar.close()
 
-    print(f"Output has been written to {primer_data.output_file_path}")
+        logger.info(f"Output has been written to {primer_data.output_file_path}")
