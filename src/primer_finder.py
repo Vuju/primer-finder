@@ -7,6 +7,7 @@ from multiprocessing import Pool, Lock
 from typing import TextIO
 from tqdm import tqdm
 
+from src.orf_finder import list_possible_orf
 from src.smith_waterman import smith_waterman
 from primer_finder_regex import *
 from match_result import MatchResult
@@ -113,11 +114,11 @@ def init(l):
     lock = l
 
 
-def write_output_to_file(output_path, read_metadata, forward_match, backward_match, read):
+def write_output_to_file(output_path, read_metadata, forward_match, backward_match, sequence, possible_orf):
     with lock, open(output_path, 'a') as out_file:
         out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip() +
                        f"{forward_match.score};{forward_match.read};{forward_match.start_index};" +
-                       f"{backward_match.score};{backward_match.read};{backward_match.start_index};{read}\n")
+                       f"{backward_match.score};{backward_match.read};{backward_match.start_index};{sequence};{str(possible_orf)}\n")
 
 
 def compute_regex_match(primer, primer_regex, read):
@@ -132,12 +133,17 @@ def compute_regex_match(primer, primer_regex, read):
 
 def compute_smith_waterman(primer, read, skip, skip3, substitution):
     score, _, read_match, index = smith_waterman(primer, read, skip, skip3, substitution)
-    return MatchResult(score, read_match, index, index + len(read))
+    return MatchResult(score, read_match, index, index + len(read_match))
 
 
 ### the main processing function
 
 def process_pair(primer_data: PrimerDataDTO, pair):
+    # initializing all flags
+    _sequence_found = False
+    _orf_calculated = 0
+        
+    
     offset = int(primer_data.distance * primer_data.search_area)
     distance = primer_data.distance
 
@@ -173,7 +179,26 @@ def process_pair(primer_data: PrimerDataDTO, pair):
         b_match.start_index += b_search_interval[0]
         b_match.end_index += b_search_interval[0]
 
-    write_output_to_file(primer_data.output_file_path, read_metadata, f_match, b_match, read)
+    ## work on getting the orf
+    sequence = read[f_match.end_index:b_match.start_index]
+    _sequence_found = len(sequence.strip()) > 0
+    
+    if _sequence_found:
+         
+        possible_orf = list_possible_orf(sequence)
+        if len(possible_orf) == 0:
+            _orf_calculated = -1
+        elif len(possible_orf) == 1:
+            _orf_calculated = 1
+        elif len(possible_orf) >= 2:
+            _orf_calculated = 2
+        else:
+            _orf_calculated = -2
+        
+        possible_orf = ([]) if _orf_calculated <= 0 else possible_orf
+    
+    if _sequence_found:
+        write_output_to_file(primer_data.output_file_path, read_metadata, f_match, b_match, sequence, possible_orf)
 
 
 ### main script
