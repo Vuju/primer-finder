@@ -219,7 +219,6 @@ if __name__ == "__main__":
     logging.basicConfig(filename='primer-finder_log.log', level=logging.INFO)
     logging.getLogger().addHandler(logging.StreamHandler())
 
-    # todo possibly try chunking
     args = compute_arguments()
     for i, primer_pair in enumerate(args.primer_data):
         primer_data = get_primer_dto_from_args(args, i)
