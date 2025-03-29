@@ -4,14 +4,16 @@ import logging
 
 from functools import partial
 from multiprocessing import Pool, Lock
-from typing import TextIO
-from tqdm import tqdm
 
-from src.orf_finder import list_possible_orf
-from src.smith_waterman import smith_waterman
-from primer_finder_regex import *
-from match_result import MatchResult
+import pandas as pd
+from tqdm import tqdm
+from typing import TextIO
+
+from src.match_result import MatchResult
+from src.orf_finder import list_possible_orf, solve_orfs_for_df
 from src.primer_data_dto import PrimerDataDTO, get_primer_dto_from_args
+from src.primer_finder_regex import *
+from src.smith_waterman import smith_waterman
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,10 @@ def parse_arguments():
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna", help="Path to input sequence file")
     parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-result.csv",
                         help="Path to output results file")
+    parser.add_argument("--orf_matching_threshold", type=int, default=4,
+                        help="Minimum number of similar sequences required to match an orf")
+    parser.add_argument("--orf_matching_upper_threshold", type=int, default=50,
+                        help="Limit of similar sequences used to match an orf")
 
     return parser.parse_args()
 
@@ -239,4 +245,10 @@ if __name__ == "__main__":
                 pbar.update(1)
         pbar.close()
 
-        logger.info(f"Output has been written to {primer_data.output_file_path}")
+        logger.info(f"Primer Finder output has been written to {primer_data.output_file_path}")
+
+        df = pd.read_csv(primer_data.output_file_path, sep=";")
+        solved = solve_orfs_for_df(df, threshold=args.orf_matching_threshold, upper_threshold=args.orf_matching_upper_threshold)
+        solved.to_csv(primer_data.output_file_path)
+
+        logger.info(f"Orf matching output has been written to {primer_data.output_file_path}")
