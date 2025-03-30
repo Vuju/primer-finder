@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process sequence alignment parameters.")
 
+    parser.add_argument("--primer_finder", type=bool, default=False,
+                        help="Flag as false to disable the primer-searching algorithm.")
+    parser.add_argument("--orf_matching", type=bool, default=True,
+                        help="Flag as false to disable the orf-decision algorithm.")
+
     parser.add_argument("--search_area", type=float, default=0.2, help="This value will determine, "
                                                         "how much extra area the smith waterman algorithm will search, "
                                                         "if the other primer has already been found with enough certainty (set by '--sw_cutoff').")
@@ -227,28 +232,32 @@ if __name__ == "__main__":
 
     args = compute_arguments()
     for i, primer_pair in enumerate(args.primer_data):
-        primer_data = get_primer_dto_from_args(args, i)
         # todo separate into different files?
-        with open(primer_data.output_file_path, 'w') as output_file:
-            output_file.write(
-                "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read\n"
-            )
+        primer_data = get_primer_dto_from_args(args, i)
 
-        pairs = read_pairs(primer_data.input_file_path)
-        lock = Lock()
+        if args.primer_finder:
+            with open(primer_data.output_file_path, 'w') as output_file:
+                output_file.write(
+                    "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read\n"
+                )
 
-        logger.info(f"Getting length of input {i+1}.")
-        pbar = tqdm(total=get_number_of_sequences_in(primer_data.input_file_path))
-        worker = partial(process_pair, primer_data)
-        with Pool(initializer=init, initargs=(lock,)) as pool:
-            for _ in pool.imap(worker, pairs, chunksize=100):
-                pbar.update(1)
-        pbar.close()
+            pairs = read_pairs(primer_data.input_file_path)
+            lock = Lock()
 
-        logger.info(f"Primer Finder output has been written to {primer_data.output_file_path}")
+            logger.info(f"Getting length of input {i+1}.")
+            pbar = tqdm(total=get_number_of_sequences_in(primer_data.input_file_path))
+            worker = partial(process_pair, primer_data)
+            with Pool(initializer=init, initargs=(lock,)) as pool:
+                for _ in pool.imap(worker, pairs, chunksize=100):
+                    pbar.update(1)
+            pbar.close()
 
-        df = pd.read_csv(primer_data.output_file_path, sep=";")
-        solved = solve_orfs_for_df(df, threshold=args.orf_matching_threshold, upper_threshold=args.orf_matching_upper_threshold)
-        solved.to_csv(primer_data.output_file_path)
+            logger.info(f"Primer Finder output has been written to {primer_data.output_file_path}")
 
-        logger.info(f"Orf matching output has been written to {primer_data.output_file_path}")
+        if args.orf_matching:
+            logger.info(f"Starting orf-matching process.")
+            df = pd.read_csv(primer_data.output_file_path, sep=";")
+            solved = solve_orfs_for_df(df, threshold=args.orf_matching_threshold, upper_threshold=args.orf_matching_upper_threshold)
+            solved.to_csv(primer_data.output_file_path)
+
+            logger.info(f"Orf matching output has been written to {primer_data.output_file_path}")

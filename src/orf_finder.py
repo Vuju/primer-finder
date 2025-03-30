@@ -1,9 +1,12 @@
 import ast
 import logging
+
+import numpy as np
 import pandas as pd
 import pyhmmer
 
 from Bio.Seq import Seq
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +33,11 @@ def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
     solved_results["ORF"] = solved_results.apply(lambda x: x["possible_orfs"][1], axis=1)
 
 
-    last_solved = pd.DataFrame
     failed = 0
     taxonomic_levels = ['Family', 'Order', 'Class']
+    pbar = tqdm(total=len(remaining_results))
 
-    while remaining_results.size > 0:
+    while len(remaining_results) > 0:
         current_entry = remaining_results.iloc[0]
 
         # Try to find enough reference matches at each taxonomic level, from specific to general
@@ -44,23 +47,26 @@ def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
             group_size = len(comp_group)
 
             if group_size >= threshold:
-                comp_group = comp_group.sample(min(upper_threshold, group_size))
+                comp_group = comp_group.sample(n=min(upper_threshold, group_size))
                 related_entries = remaining_results[remaining_results[level] == level_value]
+                ###### logger.info(f"In {level_value} we have a reference group of {len(comp_group)} entries, and {len(related_entries)} similar entries to decide.")
                 solved = decide_orfs(comp_group, related_entries)
                 solved_results = pd.concat([solved_results, solved], ignore_index=True)
+                pbar.update(len(remaining_results[(remaining_results[level] == level_value)]))
                 remaining_results = remaining_results[~(remaining_results[level] == level_value)]
-                last_solved = solved
                 break
             else:
-                logger.log(f"{group_size} entries of {level} {level_value} is too small.")
+                logger.info(f"{group_size} entries of {level} {level_value} is too small.")
 
                 # If we've tried all levels and none are big enough
                 if level == taxonomic_levels[-1]:
                     remaining_results = remaining_results[~(remaining_results['Family'] == current_entry['Family'])]
-                    failed += len(related_entries) if 'related_entries' in locals() else 1
+                    new_failed = len(related_entries) if 'related_entries' in locals() else 1
+                    failed += new_failed
+                    pbar.update(new_failed)
 
-
-    print(f"A total of {failed} entries were impossible to match.")
+    pbar.close()
+    logger.info(f"A total of {failed} entries were impossible to match.")
 
 
 ## helper functions
@@ -100,10 +106,10 @@ def decide_orfs(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFram
     for hit in hits:
         [read_id, correct_orf] = hit.name.decode().split("_")
         questionableEntries.loc[questionableEntries['Read ID'] == read_id, 'ORF'] = correct_orf
-        modified_entries = pd.concat([modified_entries, questionableEntries.loc[questionableEntries['Read ID'] == read_id].copy()], ignore_index=True)
+        if len(questionableEntries[questionableEntries["Read ID"] == read_id]) == 0:
+            modified_entries = pd.concat([modified_entries, questionableEntries.loc[questionableEntries['Read ID'] == read_id].copy()], ignore_index=True)
 
-        # print(f"changed {read_id} from {prev} to {[correct_orf]}")
-    print(f"{len(modified_entries)}({len(hits)} hits) of {len(questionableEntries)} resolved and returned.")
+    logger.info(f"{len(hits)} hits were found (and {len(modified_entries)} modified) for {len(questionableEntries)} entries.")
     return modified_entries
 
 def build_seq_from_pandas_entry(entry):
@@ -112,23 +118,24 @@ def build_seq_from_pandas_entry(entry):
     framed_region = dna[frame:]
     framed_region = add_trailing_n(framed_region)
     protein = framed_region.translate(table=5)
-    if len(str(protein)) < 2:
-        print(f"Skipping too short sequence for {entry["Read ID"]}: {str(protein)}")
-        return None
+    print(protein)
+
     text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
 
     return text_seq
 
-def process_ambiguous_orf(entry):
+def process_ambiguous_orf(entry: pd.DataFrame):
     possible_orfs = ast.literal_eval(entry["possible_orfs"])
-    for possible_orf in possible_orfs:
+    seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
+    for i, possible_orf in enumerate(possible_orfs):
         dna = Seq(entry["read"])
         dna = add_trailing_n(dna)
         protein = dna.translate(table=5)
 
         text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
                                              sequence=str(protein))
-        return text_seq
+        seqs[i] = text_seq
+    return seqs
 
 def add_trailing_n(sequence):
     remainder = len(sequence) % 3
