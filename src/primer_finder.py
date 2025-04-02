@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 # optional: improve offsets to be more accurate
 # optional: create options.ini creation + parameterization?
 
-# todo: primers and offsets as files --> check all reads for all pairs with respective offset
-# todo: from two lines to biopython parser (since read can be multiline with ~60 char per line)
+
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process sequence alignment parameters.")
 
-    parser.add_argument("--primer_finder", type=bool, default=False,
+    parser.add_argument("--primer_finder", type=bool, default=True,
                         help="Flag as false to disable the primer-searching algorithm.")
     parser.add_argument("--orf_matching", type=bool, default=True,
                         help="Flag as false to disable the orf-decision algorithm.")
@@ -54,6 +54,15 @@ def parse_arguments():
 
 def compute_arguments():
     args = parse_arguments()
+
+    ### hardcoded parameters:
+    # substitution function (see later)
+    args.end_of_read_bonus = 1
+    args.gap_penalty = -2
+    args.gap3_penalty = -2
+    args.chunksize = 100
+    ### end hardcoded parameters
+
     args.primer_data = []
 
     with open(args.primer_information, "r") as primer_info_file:
@@ -144,8 +153,15 @@ def compute_regex_match(primer, primer_regex, read):
     return MatchResult(score, read_match, index, end_index)
 
 
-def compute_smith_waterman(primer, read, skip, skip3, substitution):
-    score, _, read_match, index = smith_waterman(primer, read, skip, skip3, substitution)
+def compute_smith_waterman(primer, read, skip, skip3, substitution, end_bonus):
+    score, _, read_match, index = smith_waterman(
+        primer=primer,
+        read=read,
+        gap=skip,
+        gap3=skip3,
+        substitution_function=substitution,
+        end_of_read_bonus=end_bonus
+    )
     return MatchResult(score, read_match, index, index + len(read_match))
 
 
@@ -178,7 +194,14 @@ def process_pair(primer_data: PrimerDataDTO, pair):
 
     ## for each missing exact match, try smith waterman:
     if f_match.start_index == -1:
-        f_match = compute_smith_waterman(primer_data.f_primer, read[f_search_interval[0]:f_search_interval[1]], -2, -2, substitution_function)
+        f_match = compute_smith_waterman(
+            primer=primer_data.f_primer,
+            read=read[f_search_interval[0]:f_search_interval[1]],
+            skip=primer_data.sw_gap,
+            skip3=primer_data.sw_gap3,
+            substitution=substitution_function,
+            end_bonus=args.end_of_read_bonus
+        )
         f_match.start_index += f_search_interval[0]
         f_match.end_index += f_search_interval[0]
 
@@ -188,7 +211,14 @@ def process_pair(primer_data: PrimerDataDTO, pair):
             b_search_interval = (f_match.end_index + distance - offset, f_match.end_index + distance + len(primer_data.b_primer) + offset)
 
     if b_match.start_index == -1:
-        b_match = compute_smith_waterman(primer_data.b_primer, read[b_search_interval[0]:b_search_interval[1]], -2, -2, substitution_function)
+        b_match = compute_smith_waterman(
+            primer=primer_data.b_primer,
+            read=read[b_search_interval[0]:b_search_interval[1]],
+            skip=primer_data.sw_gap,
+            skip3=primer_data.sw_gap3,
+            substitution=substitution_function,
+            end_bonus=args.end_of_read_bonus
+        )
         b_match.start_index += b_search_interval[0]
         b_match.end_index += b_search_interval[0]
 
@@ -248,7 +278,7 @@ if __name__ == "__main__":
             pbar = tqdm(total=get_number_of_sequences_in(primer_data.input_file_path))
             worker = partial(process_pair, primer_data)
             with Pool(initializer=init, initargs=(lock,)) as pool:
-                for _ in pool.imap(worker, pairs, chunksize=100):
+                for _ in pool.imap(worker, pairs, chunksize=args.chunksize):
                     pbar.update(1)
             pbar.close()
 
