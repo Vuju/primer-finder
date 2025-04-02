@@ -112,13 +112,12 @@ def decide_orfs(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFram
     logger.info(f"{len(hits)} hits were found (and {len(modified_entries)} modified) for {len(questionableEntries)} entries.")
     return modified_entries
 
-def build_seq_from_pandas_entry(entry):
+def build_seq_from_pandas_entry(entry: pd.DataFrame):
     dna = Seq(entry["read"])
     frame = int(entry["ORF"])
     framed_region = dna[frame:]
     framed_region = add_trailing_n(framed_region)
     protein = framed_region.translate(table=5)
-    print(protein)
 
     text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
 
@@ -127,10 +126,12 @@ def build_seq_from_pandas_entry(entry):
 def process_ambiguous_orf(entry: pd.DataFrame):
     possible_orfs = ast.literal_eval(entry["possible_orfs"])
     seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
+    seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
     for i, possible_orf in enumerate(possible_orfs):
         dna = Seq(entry["read"])
-        dna = add_trailing_n(dna)
-        protein = dna.translate(table=5)
+        framed_region = dna[possible_orf:]
+        framed_region = add_trailing_n(framed_region)
+        protein = framed_region.translate(table=5)
 
         text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
                                              sequence=str(protein))
