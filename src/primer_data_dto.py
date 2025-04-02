@@ -20,6 +20,10 @@ class PrimerDataDTO:
     translation_table: Any
 
 def get_primer_dto_from_args(args, index):
+    out_path_split = args.output_file_path.rpartition(".")
+    out_path_split[1] = f"-{index}."
+    out_path = "".join(out_path_split)
+
     return PrimerDataDTO(
         f_primer = args.primer_data[index]["f_primer"],
         f_primer_regex=args.primer_data[index]["f_primer_regex"],
@@ -29,7 +33,7 @@ def get_primer_dto_from_args(args, index):
         search_area=args.search_area,
         sw_score_cutoff=args.sw_score_cutoff,
         input_file_path=args.input_file_path,
-        output_file_path=args.output_file_path,
+        output_file_path=out_path,
         translation_table=args.protein_translation_table
     )
 

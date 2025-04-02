@@ -233,7 +233,6 @@ if __name__ == "__main__":
 
     args = compute_arguments()
     for i, primer_pair in enumerate(args.primer_data):
-        # todo separate into different files?
         primer_data = get_primer_dto_from_args(args, i)
 
         if args.primer_finder:
