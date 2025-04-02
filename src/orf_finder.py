@@ -32,27 +32,29 @@ def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
     remaining_results = remaining_results[~(remaining_results['Read ID'].isin(solved_results['Read ID']))]
     solved_results["ORF"] = solved_results.apply(lambda x: x["possible_orfs"][1], axis=1)
 
-
     failed = 0
-    taxonomic_levels = ['Family', 'Order', 'Class']
     pbar = tqdm(total=len(remaining_results))
+    taxonomic_levels = ['Family', 'Order', 'Class']
 
-    while len(remaining_results) > 0:
+    while remaining_results.size > 0:
         current_entry = remaining_results.iloc[0]
 
-        # Try to find enough reference matches at each taxonomic level, from specific to general
+        # Try to match at each taxonomic level, from specific to general
         for level in taxonomic_levels:
             level_value = current_entry[level]
             comp_group = solved_results[solved_results[level] == level_value]
             group_size = len(comp_group)
 
             if group_size >= threshold:
-                comp_group = comp_group.sample(n=min(upper_threshold, group_size))
+                comp_group = comp_group.sample(min(upper_threshold, group_size))
                 related_entries = remaining_results[remaining_results[level] == level_value]
-                ###### logger.info(f"In {level_value} we have a reference group of {len(comp_group)} entries, and {len(related_entries)} similar entries to decide.")
-                solved = decide_orfs(comp_group, related_entries)
+                solved = decide_orfs_here(comp_group, related_entries, pbar)
                 solved_results = pd.concat([solved_results, solved], ignore_index=True)
-                pbar.update(len(remaining_results[(remaining_results[level] == level_value)]))
+
+                ### the following is a significant speedup over the update(1) updater (30% at 7:20 instead of 9:14),
+                ### but of course much less responsive (first update at 7:20 instead of ~2:50)
+                # pbar.update(len(related_entries))
+
                 remaining_results = remaining_results[~(remaining_results[level] == level_value)]
                 break
             else:
@@ -60,10 +62,10 @@ def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
 
                 # If we've tried all levels and none are big enough
                 if level == taxonomic_levels[-1]:
+                    logger.warning(f"Removing Family '{current_entry['Family']}' with {len(solved_results[solved_results['Family'] == current_entry['Family']])} members to continue.")
                     remaining_results = remaining_results[~(remaining_results['Family'] == current_entry['Family'])]
-                    new_failed = len(related_entries) if 'related_entries' in locals() else 1
-                    failed += new_failed
-                    pbar.update(new_failed)
+                    failed += 1 if 'related_entries' not in locals() else len(related_entries)
+
 
     pbar.close()
     logger.info(f"A total of {failed} entries were impossible to match.")
@@ -71,25 +73,32 @@ def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
 
 ## helper functions
 
-def decide_orfs(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFrame):
+def decide_orfs_here(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFrame, pbar=None):
     alphabet = pyhmmer.easel.Alphabet.amino()
 
-    referenceSequences = []
-    referenceEntries.apply(lambda x: referenceSequences.append(build_seq_from_pandas_entry(x)), axis=1)
-    questionableSequences = []
-    questionableEntries.apply(lambda x: questionableSequences.append(process_ambiguous_orf(x)), axis=1)
+    referenceSequences = np.zeros(shape=len(referenceEntries), dtype=pyhmmer.easel.TextSequence)
+    referenceSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
+    referenceEntries = referenceEntries.reset_index(drop=True)
+    for i, row in referenceEntries.iterrows():
+        referenceSequences[i] = build_seq_from_pandas_entry(row)
 
+    questionableSequences = np.zeros(shape=(len(questionableEntries), 3), dtype=pyhmmer.easel.TextSequence)
+    questionableSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
+    questionableEntries = questionableEntries.reset_index(drop=True)
+    for i, row in questionableEntries.iterrows():
+        questionableSequences[i] = process_ambiguous_orf(row)
 
-    longest_ref_seq = max(len(seq) for seq in referenceSequences)
-    longest_que_seq = max(len(seq) for seq in questionableSequences)
+    que_lengths = np.vectorize(len)(questionableSequences)
+    longest_que_seq = np.max(que_lengths)
+    ref_lengths = np.vectorize(len)(referenceSequences)
+    longest_ref_seq = np.max(ref_lengths)
     longest_seq_len = max(longest_ref_seq, longest_que_seq)
 
     referenceSequences = pad_sequences(referenceSequences, minimum=longest_seq_len)
-    questionableSequences = pad_sequences(questionableSequences, minimum=longest_seq_len)
+    questionableSequences = pad_sequences_2d(questionableSequences, minimum=longest_seq_len)
 
-    dig_questionable_sequences = [seq.digitize(alphabet=alphabet) for seq in questionableSequences]
 
-    msa = pyhmmer.easel.TextMSA(name=b"myMSA", sequences=referenceSequences)
+    msa = pyhmmer.easel.TextMSA(name=b"myMSA", sequences=referenceSequences.tolist())
     background = pyhmmer.plan7.Background(alphabet)
     builder = pyhmmer.plan7.Builder(alphabet)
     digital_msa = msa.digitize(alphabet=alphabet)
@@ -98,21 +107,35 @@ def decide_orfs(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFram
     pipeline = pyhmmer.plan7.Pipeline(alphabet, background)
     pipeline.bias_filter = False
 
-    sequenceBlock = pyhmmer.easel.DigitalSequenceBlock(alphabet=alphabet, iterable=dig_questionable_sequences)
-    hits = pipeline.search_hmm(query=hmm, sequences=sequenceBlock)
-
-    modified_entries = pd.DataFrame(columns=questionableEntries.columns)
     questionableEntries.loc[:, 'ORF'] = ''
-    for hit in hits:
-        [read_id, correct_orf] = hit.name.decode().split("_")
-        questionableEntries.loc[questionableEntries['Read ID'] == read_id, 'ORF'] = correct_orf
-        if len(questionableEntries[questionableEntries["Read ID"] == read_id]) == 0:
-            modified_entries = pd.concat([modified_entries, questionableEntries.loc[questionableEntries['Read ID'] == read_id].copy()], ignore_index=True)
+    modified_entries = pd.DataFrame(columns=questionableEntries.columns)
+    total_hits = 0
 
-    logger.info(f"{len(hits)} hits were found (and {len(modified_entries)} modified) for {len(questionableEntries)} entries.")
+    for query in questionableSequences:
+
+        dig_questionable_sequences = [seq.digitize(alphabet=alphabet) for seq in query]
+        sequenceBlock = pyhmmer.easel.DigitalSequenceBlock(alphabet=alphabet, iterable=dig_questionable_sequences)
+        top_hits = pipeline.search_hmm(query=hmm, sequences=sequenceBlock)
+        if len(top_hits.reported) > 0:
+            total_hits += len(top_hits.reported)
+            top_hit = top_hits[0]
+
+            for hit in top_hits:
+                if top_hit is not None and top_hit.name.decode() != "":
+                    if hit.score > top_hit.score:
+                        top_hit = hit
+
+            [read_id, correct_orf] = top_hit.name.decode().split("_")
+            questionableEntries.loc[questionableEntries['Read ID'] == read_id, 'ORF'] = correct_orf
+            if len(modified_entries[modified_entries["Read ID"] == read_id]) == 0:
+                modified_entries = pd.concat([modified_entries, questionableEntries.loc[questionableEntries['Read ID'] == read_id].copy()], ignore_index=True)
+        ### this is the much slower but more responsive updater (see comment further up)
+        if pbar is not None:
+            pbar.update(1)
+    logger.info(f"modified entries: {len(modified_entries)} (of {total_hits} hits) and {len(questionableEntries)} original entries")
     return modified_entries
 
-def build_seq_from_pandas_entry(entry: pd.DataFrame):
+def build_seq_from_pandas_entry(entry: pd.Series):
     dna = Seq(entry["read"])
     frame = int(entry["ORF"])
     framed_region = dna[frame:]
@@ -123,7 +146,7 @@ def build_seq_from_pandas_entry(entry: pd.DataFrame):
 
     return text_seq
 
-def process_ambiguous_orf(entry: pd.DataFrame):
+def process_ambiguous_orf(entry: pd.Series):
     possible_orfs = ast.literal_eval(entry["possible_orfs"])
     seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
     seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
@@ -144,13 +167,19 @@ def add_trailing_n(sequence):
         sequence += ('N' * (3 - remainder))
     return sequence
 
-def pad_sequences(sequences, pad_char='X', minimum=0):
-    max_length = max(len(seq) for seq in sequences)
-    max_length= max(max_length, minimum)
+def pad_sequences(sequences, minimum=0, pad_char='X'):
+    max_length = len(max(sequences, key=len))
+    max_length = max(max_length, minimum)
 
-    padded_sequences = [
-        pyhmmer.easel.TextSequence(name=seq.name, sequence=(seq.sequence + pad_char * (max_length - len(seq))))
-        for seq in sequences
-    ]
+    padded_sequences = np.zeros(shape=len(sequences), dtype=pyhmmer.easel.TextSequence)
+    for i, seq in enumerate(sequences):
+        padded_sequence = seq.sequence + pad_char * (max_length - len(seq))
+        padded_sequences[i] = pyhmmer.easel.TextSequence(name=seq.name, sequence=padded_sequence)
 
-    return padded_sequences
+    return np.array(padded_sequences, dtype=pyhmmer.easel.TextSequence)
+
+def pad_sequences_2d(sequences, minimum, pad_char='X'):
+    padded_matrix = np.zeros(shape=(len(sequences), len(sequences[0])), dtype=pyhmmer.easel.TextSequence)
+    for i in range(len(sequences)):
+        padded_matrix[i] = pad_sequences(sequences[i], minimum, pad_char)
+    return np.array(padded_matrix)
