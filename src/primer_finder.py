@@ -7,7 +7,7 @@ from multiprocessing import Pool, Lock
 
 import pandas as pd
 from tqdm import tqdm
-from typing import TextIO
+from typing import TextIO, Any
 
 from src.match_result import MatchResult
 from src.orf_finder import list_possible_orf, solve_orfs_for_df
@@ -46,6 +46,8 @@ def parse_arguments():
                         help="Minimum number of similar sequences required to match an orf")
     parser.add_argument("--orf_matching_upper_threshold", type=int, default=50,
                         help="Limit of similar sequences used to match an orf")
+    parser.add_argument("--protein_translation_table", type=Any, default=5,
+                        help="Translation table for Bio.Seq translate(). This is used in orf_finder.")
 
     return parser.parse_args()
 
@@ -196,7 +198,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
     
     if _sequence_found:
          
-        possible_orf = list_possible_orf(sequence)
+        possible_orf = list_possible_orf(sequence, translation_table=primer_data.translation_table)
         if len(possible_orf) == 0:
             _orf_calculated = -1
         elif len(possible_orf) == 1:
@@ -207,8 +209,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
             _orf_calculated = -2
         
         possible_orf = ([]) if _orf_calculated <= 0 else possible_orf
-    
-    if _sequence_found:
+
         write_output_to_file(primer_data.output_file_path, read_metadata, f_match, b_match, sequence, possible_orf)
 
 
@@ -221,7 +222,7 @@ def get_number_of_sequences_in(input_file_path):
     count = 0
     with open(input_file_path, 'r') as input_file:
         for line in input_file.readlines():
-            if line.startswith(('>')):
+            if line.startswith('>'):
                 count += 1
     return count
 
@@ -257,7 +258,7 @@ if __name__ == "__main__":
         if args.orf_matching:
             logger.info(f"Starting orf-matching process.")
             df = pd.read_csv(primer_data.output_file_path, sep=";")
-            solved = solve_orfs_for_df(df, threshold=args.orf_matching_threshold, upper_threshold=args.orf_matching_upper_threshold)
+            solved = solve_orfs_for_df(df, threshold=args.orf_matching_threshold, upper_threshold=args.orf_matching_upper_threshold, translation_table=args.protein_translation_table)
             solved.to_csv(primer_data.output_file_path)
 
             logger.info(f"Orf matching output has been written to {primer_data.output_file_path}")

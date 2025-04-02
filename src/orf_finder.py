@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-def list_possible_orf(sequence):
+def list_possible_orf(sequence, translation_table):
     dna = Seq(sequence)
     orf_list = []
     for frame in range(3):
@@ -20,12 +20,12 @@ def list_possible_orf(sequence):
         framed_seq = add_trailing_n(framed_seq)
 
         # Translate using invertebrate mitochondrial code
-        protein = framed_seq.translate(table=5)
+        protein = framed_seq.translate(table=translation_table)
         if '*' in protein:
             orf_list.append(frame)
     return orf_list
 
-def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
+def solve_orfs_for_df(df: pd.DataFrame, translation_table, threshold = 4, upper_threshold = 50):
 
     remaining_results = df[~df['possible_orfs'].str.contains(r'\[\]')]
     solved_results = remaining_results[~remaining_results['possible_orfs'].str.contains(',')]
@@ -48,7 +48,7 @@ def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
             if group_size >= threshold:
                 comp_group = comp_group.sample(min(upper_threshold, group_size))
                 related_entries = remaining_results[remaining_results[level] == level_value]
-                solved = decide_orfs_here(comp_group, related_entries, pbar)
+                solved = decide_orfs_here(comp_group, related_entries,translation_table=translation_table, pbar=pbar)
                 solved_results = pd.concat([solved_results, solved], ignore_index=True)
 
                 ### the following is a significant speedup over the update(1) updater (30% at 7:20 instead of 9:14),
@@ -73,20 +73,20 @@ def solve_orfs_for_df(df: pd.DataFrame, threshold = 4, upper_threshold = 50):
 
 ## helper functions
 
-def decide_orfs_here(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFrame, pbar=None):
+def decide_orfs_here(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFrame, translation_table, pbar=None):
     alphabet = pyhmmer.easel.Alphabet.amino()
 
     referenceSequences = np.zeros(shape=len(referenceEntries), dtype=pyhmmer.easel.TextSequence)
     referenceSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
     referenceEntries = referenceEntries.reset_index(drop=True)
     for i, row in referenceEntries.iterrows():
-        referenceSequences[i] = build_seq_from_pandas_entry(row)
+        referenceSequences[i] = build_seq_from_pandas_entry(row, translation_table=translation_table)
 
     questionableSequences = np.zeros(shape=(len(questionableEntries), 3), dtype=pyhmmer.easel.TextSequence)
     questionableSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
     questionableEntries = questionableEntries.reset_index(drop=True)
     for i, row in questionableEntries.iterrows():
-        questionableSequences[i] = process_ambiguous_orf(row)
+        questionableSequences[i] = process_ambiguous_orf(row, translation_table=translation_table)
 
     que_lengths = np.vectorize(len)(questionableSequences)
     longest_que_seq = np.max(que_lengths)
@@ -135,18 +135,18 @@ def decide_orfs_here(referenceEntries: pd.DataFrame, questionableEntries: pd.Dat
     logger.info(f"modified entries: {len(modified_entries)} (of {total_hits} hits) and {len(questionableEntries)} original entries")
     return modified_entries
 
-def build_seq_from_pandas_entry(entry: pd.Series):
+def build_seq_from_pandas_entry(entry: pd.Series, translation_table):
     dna = Seq(entry["read"])
     frame = int(entry["ORF"])
     framed_region = dna[frame:]
     framed_region = add_trailing_n(framed_region)
-    protein = framed_region.translate(table=5)
+    protein = framed_region.translate(table=translation_table)
 
     text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
 
     return text_seq
 
-def process_ambiguous_orf(entry: pd.Series):
+def process_ambiguous_orf(entry: pd.Series, translation_table):
     possible_orfs = ast.literal_eval(entry["possible_orfs"])
     seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
     seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
@@ -154,7 +154,7 @@ def process_ambiguous_orf(entry: pd.Series):
         dna = Seq(entry["read"])
         framed_region = dna[possible_orf:]
         framed_region = add_trailing_n(framed_region)
-        protein = framed_region.translate(table=5)
+        protein = framed_region.translate(table=translation_table)
 
         text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
                                              sequence=str(protein))

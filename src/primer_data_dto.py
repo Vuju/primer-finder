@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from typing import Any
+
 
 @dataclass
 class PrimerDataDTO:
@@ -15,6 +17,7 @@ class PrimerDataDTO:
     input_file_path: str
     output_file_path: str
 
+    translation_table: Any
 
 def get_primer_dto_from_args(args, index):
     return PrimerDataDTO(
@@ -26,6 +29,7 @@ def get_primer_dto_from_args(args, index):
         search_area=args.search_area,
         sw_score_cutoff=args.sw_score_cutoff,
         input_file_path=args.input_file_path,
-        output_file_path=args.output_file_path
+        output_file_path=args.output_file_path,
+        translation_table=args.protein_translation_table
     )
 
