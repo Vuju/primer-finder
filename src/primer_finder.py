@@ -3,7 +3,7 @@ import gzip
 import logging
 
 from functools import partial
-from multiprocessing import Pool, Lock
+from multiprocessing import Pool, Lock, cpu_count
 
 import pandas as pd
 from tqdm import tqdm
@@ -42,11 +42,13 @@ def parse_arguments():
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna", help="Path to input sequence file")
     parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-result.csv",
                         help="Path to output results file")
-    parser.add_argument("--orf_matching_threshold", type=int, default=4,
+    parser.add_argument("--orf_matching_threshold", type=int, default=10,
                         help="Minimum number of similar sequences required to match an orf")
     parser.add_argument("--orf_matching_upper_threshold", type=int, default=50,
                         help="Limit of similar sequences used to match an orf")
     parser.add_argument("--protein_translation_table", type=Any, default=5,
+                        help="Translation table for Bio.Seq translate(). This is used in orf_finder.")
+    parser.add_argument("--num_threads", type=int, default=None,
                         help="Translation table for Bio.Seq translate(). This is used in orf_finder.")
 
     return parser.parse_args()
@@ -251,10 +253,15 @@ currentRead = ""
 
 def get_number_of_sequences_in(input_file_path):
     count = 0
-    with open(input_file_path, 'r') as input_file:
-        for line in input_file.readlines():
-            if line.startswith('>'):
-                count += 1
+    file: TextIO
+    if input_file_path.endswith('.gz'):
+        file = gzip.open(input_file_path, 'rt')
+    else:
+        file = open(input_file_path, 'r', encoding="UTF-8")
+    for line in file.readlines():
+        if line.startswith('>'):
+            count += 1
+    file.close()
     return count
 
 
@@ -263,8 +270,14 @@ if __name__ == "__main__":
     logging.getLogger().addHandler(logging.StreamHandler())
 
     args = compute_arguments()
+    total_number_of_sequences = 0
     for i, primer_pair in enumerate(args.primer_data):
+
         primer_data = get_primer_dto_from_args(args, i)
+
+        if i == 0:
+            logger.info(f"Getting length of input file.")
+            total_number_of_sequences=get_number_of_sequences_in(primer_data.input_file_path)
 
         if args.primer_finder:
             with open(primer_data.output_file_path, 'w') as output_file:
@@ -274,11 +287,11 @@ if __name__ == "__main__":
 
             pairs = read_pairs(primer_data.input_file_path)
             lock = Lock()
-
-            logger.info(f"Getting length of input {i+1}.")
-            pbar = tqdm(total=get_number_of_sequences_in(primer_data.input_file_path))
+            logger.info(f"Searching input sequences for primer pair {i + 1}.")
+            pbar = tqdm(total=total_number_of_sequences)
             worker = partial(process_pair, primer_data)
-            with Pool(initializer=init, initargs=(lock,)) as pool:
+            num_threads = args.num_threads if args.num_threads is not None else cpu_count()
+            with Pool(processes=args.num_threads, initializer=init, initargs=(lock,)) as pool:
                 for _ in pool.imap(worker, pairs, chunksize=args.chunksize):
                     pbar.update(1)
             pbar.close()

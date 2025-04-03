@@ -16,12 +16,12 @@ def list_possible_orf(sequence, translation_table):
     for frame in range(3):
         framed_seq = dna[frame:]
 
-        # adding trailing N, because Bio is pissed if I don't
-        framed_seq = add_trailing_n(framed_seq)
+        # trim sequqence, because Bio is pissed if I don't
+        framed_seq = trim_to_triplet(framed_seq)
 
-        # Translate using invertebrate mitochondrial code
+        # Translate using (by default) invertebrate mitochondrial code
         protein = framed_seq.translate(table=translation_table)
-        if '*' in protein:
+        if '*' not in protein:
             orf_list.append(frame)
     return orf_list
 
@@ -29,7 +29,7 @@ def solve_orfs_for_df(
         df: pd.DataFrame,
         translation_table,
         e_value = 1000,
-        threshold = 4,
+        threshold = 10,
         upper_threshold = 50
 ):
 
@@ -40,7 +40,7 @@ def solve_orfs_for_df(
 
     failed = 0
     pbar = tqdm(total=len(remaining_results))
-    taxonomic_levels = ['Family', 'Order', 'Class']
+    taxonomic_levels = ['Species', 'Genus', 'Family', 'Order', 'Class']
 
     while remaining_results.size > 0:
         current_entry = remaining_results.iloc[0]
@@ -152,7 +152,7 @@ def build_seq_from_pandas_entry(entry: pd.Series, translation_table):
     dna = Seq(entry["read"])
     frame = int(entry["ORF"])
     framed_region = dna[frame:]
-    framed_region = add_trailing_n(framed_region)
+    framed_region = trim_to_triplet(framed_region)
     protein = framed_region.translate(table=translation_table)
 
     text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
@@ -166,7 +166,7 @@ def process_ambiguous_orf(entry: pd.Series, translation_table):
     for i, possible_orf in enumerate(possible_orfs):
         dna = Seq(entry["read"])
         framed_region = dna[possible_orf:]
-        framed_region = add_trailing_n(framed_region)
+        framed_region = trim_to_triplet(framed_region)
         protein = framed_region.translate(table=translation_table)
 
         text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
@@ -174,11 +174,10 @@ def process_ambiguous_orf(entry: pd.Series, translation_table):
         seqs[i] = text_seq
     return seqs
 
-def add_trailing_n(sequence):
+def trim_to_triplet(sequence):
     remainder = len(sequence) % 3
-    if remainder > 0:
-        sequence += ('N' * (3 - remainder))
-    return sequence
+    trimmed_sequence = sequence[:-remainder]
+    return trimmed_sequence
 
 def pad_sequences(sequences, minimum=0, pad_char='X'):
     max_length = len(max(sequences, key=len))
