@@ -268,7 +268,7 @@ if __name__ == "__main__":
         if args.primer_finder:
             with open(primer_data.output_file_path, 'w') as output_file:
                 output_file.write(
-                    "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read\n"
+                    "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read;possible_orfs\n"
                 )
 
             pairs = read_pairs(primer_data.input_file_path)
