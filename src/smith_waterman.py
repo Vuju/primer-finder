@@ -1,6 +1,13 @@
 # todo explore parameter space
 
-def smith_waterman(primer, read, gap=-2, gap3=-2, substitution_function=(lambda p, r: 2 if (p == r) else -1), end_of_read_bonus=1):
+def smith_waterman(
+        primer,
+        read,
+        gap = -2,
+        gap3 = -2,
+        substitution_function = (lambda p, r: 2 if (p == r) else -1),
+        end_of_read_bonus = 1
+):
     """
     An implementation of the Smith-Waterman algorithm for local sequence alignment.
     Extended with the functionality to jump triplets.

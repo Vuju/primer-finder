@@ -25,7 +25,13 @@ def list_possible_orf(sequence, translation_table):
             orf_list.append(frame)
     return orf_list
 
-def solve_orfs_for_df(df: pd.DataFrame, translation_table, threshold = 4, upper_threshold = 50):
+def solve_orfs_for_df(
+        df: pd.DataFrame,
+        translation_table,
+        e_value = 1000,
+        threshold = 4,
+        upper_threshold = 50
+):
 
     remaining_results = df[~df['possible_orfs'].str.contains(r'\[\]')]
     solved_results = remaining_results[~remaining_results['possible_orfs'].str.contains(',')]
@@ -48,7 +54,7 @@ def solve_orfs_for_df(df: pd.DataFrame, translation_table, threshold = 4, upper_
             if group_size >= threshold:
                 comp_group = comp_group.sample(min(upper_threshold, group_size))
                 related_entries = remaining_results[remaining_results[level] == level_value]
-                solved = decide_orfs_here(comp_group, related_entries,translation_table=translation_table, pbar=pbar)
+                solved = decide_orfs_here(comp_group, related_entries,translation_table=translation_table, e_value=e_value, pbar=pbar)
                 solved_results = pd.concat([solved_results, solved], ignore_index=True)
 
                 ### the following is a significant speedup over the update(1) updater (30% at 7:20 instead of 9:14),
@@ -73,7 +79,13 @@ def solve_orfs_for_df(df: pd.DataFrame, translation_table, threshold = 4, upper_
 
 ## helper functions
 
-def decide_orfs_here(referenceEntries: pd.DataFrame, questionableEntries: pd.DataFrame, translation_table, pbar=None):
+def decide_orfs_here(
+        referenceEntries: pd.DataFrame,
+        questionableEntries: pd.DataFrame,
+        translation_table,
+        e_value = 1000,
+        pbar=None
+):
     alphabet = pyhmmer.easel.Alphabet.amino()
 
     referenceSequences = np.zeros(shape=len(referenceEntries), dtype=pyhmmer.easel.TextSequence)
@@ -106,6 +118,7 @@ def decide_orfs_here(referenceEntries: pd.DataFrame, questionableEntries: pd.Dat
 
     pipeline = pyhmmer.plan7.Pipeline(alphabet, background)
     pipeline.bias_filter = False
+    pipeline.E = e_value
 
     questionableEntries.loc[:, 'ORF'] = ''
     modified_entries = pd.DataFrame(columns=questionableEntries.columns)
@@ -122,7 +135,7 @@ def decide_orfs_here(referenceEntries: pd.DataFrame, questionableEntries: pd.Dat
 
             for hit in top_hits:
                 if top_hit is not None and top_hit.name.decode() != "":
-                    if hit.score > top_hit.score:
+                    if hit.evalue < top_hit.evalue:
                         top_hit = hit
 
             [read_id, correct_orf] = top_hit.name.decode().split("_")

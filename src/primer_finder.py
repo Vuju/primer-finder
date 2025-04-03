@@ -61,6 +61,7 @@ def compute_arguments():
     args.gap_penalty = -2
     args.gap3_penalty = -2
     args.chunksize = 100
+    args.e_value = 1000
     ### end hardcoded parameters
 
     args.primer_data = []
@@ -287,7 +288,13 @@ if __name__ == "__main__":
         if args.orf_matching:
             logger.info(f"Starting orf-matching process.")
             df = pd.read_csv(primer_data.output_file_path, sep=";")
-            solved = solve_orfs_for_df(df, threshold=args.orf_matching_threshold, upper_threshold=args.orf_matching_upper_threshold, translation_table=args.protein_translation_table)
+            solved = solve_orfs_for_df(
+                df=df,
+                threshold=args.orf_matching_threshold,
+                upper_threshold=args.orf_matching_upper_threshold,
+                translation_table=args.protein_translation_table,
+                e_value=args.e_value
+            )
             solved.to_csv(primer_data.output_file_path)
 
             logger.info(f"Orf matching output has been written to {primer_data.output_file_path}")
