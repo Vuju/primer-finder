@@ -14,6 +14,7 @@ Primer Finder locates forward and reverse primer sequences within DNA reads. It 
 - Configurable search parameters
 - Multiprocessing support for improved performance
 - Handles compressed (gzip) and uncompressed input files
+- *NEW* ORF finder Module: will figure out the best orf by querying possible orfs against a HMM
 
 ## Installation
 
@@ -29,6 +30,7 @@ Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+To use the orf-finder module, you will also need **"muscle"** for MSA. Please use a version of 5.X with parameter names "-align" and "-output".
 
 ## Usage
 
@@ -45,15 +47,20 @@ python primer_finder.py --input_file_path ./data/my_sequences.fna --primer_infor
 ```
 
 ### Command-line Arguments
-
-| Argument | Default                         | Description                                                                                   |
-|----------|---------------------------------|-----------------------------------------------------------------------------------------------|
-| `--search_area` | 0.2                             | Determines how much extra area the algorithm will search if the other primer has already been found |
-| `--sw_score_cutoff` | 0.8                             | Smith-Waterman score cutoff for accepting a match                                             |
-| `--primer_information` | ./data/primer-information.csv   | CSV list of forward and reverse primer sequences, with expected distances                     |
-| `--input_file_path` | ./data/DB.COX1.fna              | Path to input sequence file                                                                   |
-| `--output_file_path` | ./data/primer-finder-result.csv | Path to output results file                                                                   |
-
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--primer_finder` | True | Flag as false to disable the primer-searching algorithm. |
+| `--orf_matching` | True | Flag as false to disable the orf-decision algorithm. |
+| `--search_area` | 0.2 | Determines how much extra area the algorithm will search if the other primer has already been found with enough certainty (set by '--sw_cutoff'). |
+| `--sw_score_cutoff` | 0.8 | Smith-Waterman score cutoff for accepting a match. |
+| `--primer_information` | ./data/primer-information.csv | CSV list of forward and reverse primer sequences, with expected distances. |
+| `--muscle_path` | /mnt/c/Users/Me/bin/muscle | Path to the muscle binary/executable. Runs with version 5.3, using 'muscle_path -align tmp_in.fasta -out tmp_out.fasta'. |
+| `--input_file_path` | ./data/DB.COX1.fna | Path to input sequence file. |
+| `--output_file_path` | ./data/primer-finder-result.csv | Path to output results file. |
+| `--orf_matching_threshold` | 10 | Minimum number of similar sequences required to match an orf. |
+| `--orf_matching_upper_threshold` | 50 | Limit of similar sequences used to match an orf. |
+| `--protein_translation_table` | 5 | Translation table for Bio.Seq translate(). This is used in orf_finder. |
+| `--num_threads` | None | Number of threads to use for processing. |
 ## Input Format
 
 ### Primer Information CSV
@@ -87,9 +94,16 @@ The output is a CSV file containing:
   2. Load primer information
   3. Process each primer pair against all reads
   4. For each read:
-     - Try exact matching via regex
-     - If needed, apply Smith-Waterman alignment
-     - Record results
+     * Primer finder module
+       * Try exact matching via regex
+       * If needed, apply Smith-Waterman alignment
+       * Record results
+     * orf finder module
+       * Find all trivial ORFs
+       * Define Reference Groups
+         * MSA with muscle
+         * build a HMM
+         * query non-trivial orfs against a suitable HMM
 
 ## Performance Optimization
 
