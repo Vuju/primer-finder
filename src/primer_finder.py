@@ -39,6 +39,9 @@ def parse_arguments():
     parser.add_argument("--primer_information", type=str, default="./data/primer-information.csv",
                         help="CSV list of forward and reverse primer sequence, as well as the expected distance inbetween.")
 
+    parser.add_argument("--muscle_path", type=str, default="/mnt/c/Users/Me/bin/muscle",
+                        help="Path to the muscle binary/executable. I run with version 5.3, and it will be used to run 'muscle_path -align tmp_in.fasta -out tmp_out.fasta'")
+
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna", help="Path to input sequence file")
     parser.add_argument("--output_file_path", type=str, default="./data/primer-finder-result.csv",
                         help="Path to output results file")
@@ -308,6 +311,7 @@ if __name__ == "__main__":
                 threshold=args.orf_matching_threshold,
                 upper_threshold=args.orf_matching_upper_threshold,
                 translation_table=args.protein_translation_table,
+                muscle_path=args.muscle_path,
                 e_value=args.e_value
             )
             solved.to_csv(primer_data.output_file_path)

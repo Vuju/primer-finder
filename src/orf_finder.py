@@ -1,5 +1,6 @@
 import ast
 import logging
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,7 @@ def list_possible_orf(sequence, translation_table):
 def solve_orfs_for_df(
         df: pd.DataFrame,
         translation_table,
+        muscle_path,
         e_value = 1000,
         threshold = 10,
         upper_threshold = 50
@@ -54,11 +56,16 @@ def solve_orfs_for_df(
             if group_size >= threshold:
                 comp_group = comp_group.sample(min(upper_threshold, group_size))
                 related_entries = remaining_results[remaining_results[level] == level_value]
-                solved = decide_orfs_here(comp_group, related_entries,translation_table=translation_table, e_value=e_value, pbar=pbar)
+                solved = decide_orfs_here(
+                    comp_group,
+                    related_entries,
+                    translation_table=translation_table,
+                    muscle_path=muscle_path,
+                    e_value=e_value,
+                    pbar=pbar
+                )
                 solved_results = pd.concat([solved_results, solved], ignore_index=True)
 
-                ### the following is a significant speedup over the update(1) updater (30% at 7:20 instead of 9:14),
-                ### but of course much less responsive (first update at 7:20 instead of ~2:50)
                 # pbar.update(len(related_entries))
 
                 remaining_results = remaining_results[~(remaining_results[level] == level_value)]
@@ -83,6 +90,7 @@ def decide_orfs_here(
         referenceEntries: pd.DataFrame,
         questionableEntries: pd.DataFrame,
         translation_table,
+        muscle_path,
         e_value = 1000,
         pbar=None
 ):
@@ -100,17 +108,19 @@ def decide_orfs_here(
     for i, row in questionableEntries.iterrows():
         questionableSequences[i] = process_ambiguous_orf(row, translation_table=translation_table)
 
-    que_lengths = np.vectorize(len)(questionableSequences)
-    longest_que_seq = np.max(que_lengths)
-    ref_lengths = np.vectorize(len)(referenceSequences)
-    longest_ref_seq = np.max(ref_lengths)
-    longest_seq_len = max(longest_ref_seq, longest_que_seq)
+    in_file = "tmp_in.fasta"
+    with open(in_file, "wb") as f:
+        for seq in referenceSequences:
+            # print(seq.sequence)
+            seq.write(f)
+    out_file = "tmp_out.fasta"
+    subprocess.run([f"{muscle_path}", "-align", in_file, "-output", out_file],
+                   stdout=subprocess.PIPE,
+                   stderr=subprocess.PIPE,
+                   text=True)
 
-    referenceSequences = pad_sequences(referenceSequences, minimum=longest_seq_len)
-    questionableSequences = pad_sequences_2d(questionableSequences, minimum=longest_seq_len)
-
-
-    msa = pyhmmer.easel.TextMSA(name=b"myMSA", sequences=referenceSequences.tolist())
+    msa = pyhmmer.easel.MSAFile(out_file).read()
+    msa.name = "tmpMSA".encode()
     background = pyhmmer.plan7.Background(alphabet)
     builder = pyhmmer.plan7.Builder(alphabet)
     digital_msa = msa.digitize(alphabet=alphabet)
