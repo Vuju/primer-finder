@@ -1,7 +1,5 @@
 # External dependencies
 tqdm
 pyhmmer
-
-# External dependencies used in Jupyter Notebooks
 biopython
 pandas

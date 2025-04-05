@@ -156,14 +156,15 @@ def compute_regex_match(primer, primer_regex, read):
     return MatchResult(score, read_match, index, end_index)
 
 
-def compute_smith_waterman(primer, read, skip, skip3, substitution, end_bonus):
+def compute_smith_waterman(primer, read, skip, skip3, substitution, is_end, end_bonus):
     score, _, read_match, index = smith_waterman(
         primer=primer,
         read=read,
         gap=skip,
         gap3=skip3,
         substitution_function=substitution,
-        end_of_read_bonus=end_bonus
+        end_of_read_bonus=is_end,
+        end_of_read_bonus_value=end_bonus
     )
     return MatchResult(score, read_match, index, index + len(read_match))
 
@@ -203,6 +204,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
             skip=primer_data.sw_gap,
             skip3=primer_data.sw_gap3,
             substitution=substitution_function,
+            is_end=(f_search_interval == (0, len(read))),
             end_bonus=args.end_of_read_bonus
         )
         f_match.start_index += f_search_interval[0]
@@ -220,6 +222,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
             skip=primer_data.sw_gap,
             skip3=primer_data.sw_gap3,
             substitution=substitution_function,
+            is_end=(b_search_interval == (0, len(read))),
             end_bonus=args.end_of_read_bonus
         )
         b_match.start_index += b_search_interval[0]
@@ -290,7 +293,6 @@ if __name__ == "__main__":
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=total_number_of_sequences)
             worker = partial(process_pair, primer_data)
-            num_threads = args.num_threads if args.num_threads is not None else cpu_count()
             with Pool(processes=args.num_threads, initializer=init, initargs=(lock,)) as pool:
                 for _ in pool.imap(worker, pairs, chunksize=args.chunksize):
                     pbar.update(1)

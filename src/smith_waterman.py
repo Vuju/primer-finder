@@ -6,7 +6,8 @@ def smith_waterman(
         gap = -2,
         gap3 = -2,
         substitution_function = (lambda p, r: 2 if (p == r) else -1),
-        end_of_read_bonus = 1
+        end_of_read_bonus = True,
+        end_of_read_bonus_value = 1
 ):
     """
     An implementation of the Smith-Waterman algorithm for local sequence alignment.
@@ -36,9 +37,10 @@ def smith_waterman(
     max_pos = (0, 0)
 
     # for beginning (and end later), define a bonus to encourage matching partial primers
-    for i in range(2, rows):
-        for j in range(0, 3):
-            score_matrix[i][j] = end_of_read_bonus * (i - 2)
+    if end_of_read_bonus:
+        for i in range(2, rows):
+            for j in range(0, 3):
+                score_matrix[i][j] = end_of_read_bonus_value * (i - 2)
 
     for i in range(3, rows):
         for j in range(3, cols):
@@ -61,12 +63,13 @@ def smith_waterman(
                 max_pos = (i, j)
 
     # for (beginning earlier and) end, define a bonus to encourage matching partial primers
-    last_column = cols - 1
-    for i in range(3, rows):
-        score_matrix[i][last_column] += max(0, end_of_read_bonus * (rows - i - 1))
-        if score_matrix[i][last_column] > max_score:
-            max_score = score_matrix[i][last_column]
-            max_pos = (i, last_column)
+    if end_of_read_bonus:
+        last_column = cols - 1
+        for i in range(3, rows):
+            score_matrix[i][last_column] += max(0, end_of_read_bonus_value * (rows - i - 1))
+            if score_matrix[i][last_column] > max_score:
+                max_score = score_matrix[i][last_column]
+                max_pos = (i, last_column)
 
     # perform traceback
     aligned_primer = []
