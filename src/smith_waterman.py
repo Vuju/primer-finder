@@ -119,6 +119,9 @@ def smith_waterman(
 
     aligned_primer = ''.join(reversed(aligned_primer))
     aligned_read = ''.join(reversed(aligned_read))
-    alignment_start_index_in_read = j - 2
+
+    # There were 5 in 2.3M sequences, which managed to set their index to -1 instead of 0.
+    # Since their alignment worked otherwise, I set the index to min 0. Maybe their score is also off by 1 but who cares.
+    alignment_start_index_in_read = max(0, j - 2)
 
     return max_score, aligned_primer, aligned_read, alignment_start_index_in_read
