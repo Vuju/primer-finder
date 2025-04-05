@@ -107,13 +107,13 @@ def smith_waterman(
             for k in range(3):
                 if i - k > 2:  # Ensure we're within bounds
                     aligned_primer.append(primer[i - 3 - k])
-                    aligned_read.append('---')
+                    aligned_read.append('-')
             i -= 3
 
         elif direction == 5:  # Left3 (triplet insertion)
             for k in range(3):
                 if j - k > 2:  # Ensure we're within bounds
-                    aligned_primer.append('---')
+                    aligned_primer.append('-')
                     aligned_read.append(read[j - 3 - k])
             j -= 3
 
