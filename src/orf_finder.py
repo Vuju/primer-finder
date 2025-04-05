@@ -176,8 +176,9 @@ def process_ambiguous_orf(entry: pd.Series, translation_table):
 
 def trim_to_triplet(sequence):
     remainder = len(sequence) % 3
-    trimmed_sequence = sequence[:-remainder]
-    return trimmed_sequence
+    if remainder != 0:
+        sequence = sequence[:-remainder]
+    return sequence
 
 def pad_sequences(sequences, minimum=0, pad_char='X'):
     max_length = len(max(sequences, key=len))

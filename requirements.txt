@@ -3,3 +3,5 @@ tqdm
 pyhmmer
 biopython
 pandas
+muscle
+numpy
