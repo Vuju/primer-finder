@@ -40,7 +40,9 @@ def solve_orfs_for_df(
     remaining_results = remaining_results[~(remaining_results['Read ID'].isin(solved_results['Read ID']))]
     solved_results["ORF"] = solved_results.apply(lambda x: x["possible_orfs"][1], axis=1)
 
+    not_enough_references = 0
     failed = 0
+
     pbar = tqdm(total=len(remaining_results))
     taxonomic_levels = ['Species', 'Genus', 'Family', 'Order', 'Class']
 
@@ -64,24 +66,22 @@ def solve_orfs_for_df(
                     e_value=e_value,
                     pbar=pbar
                 )
+                failed += len(related_entries) - len(solved)
                 solved_results = pd.concat([solved_results, solved], ignore_index=True)
-
-                # pbar.update(len(related_entries))
 
                 remaining_results = remaining_results[~(remaining_results[level] == level_value)]
                 break
             else:
-                logger.info(f"{group_size} entries of {level} {level_value} is too small.")
-
                 # If we've tried all levels and none are big enough
                 if level == taxonomic_levels[-1]:
                     logger.warning(f"Removing Family '{current_entry['Family']}' with {len(solved_results[solved_results['Family'] == current_entry['Family']])} members to continue.")
                     remaining_results = remaining_results[~(remaining_results['Family'] == current_entry['Family'])]
-                    failed += 1 if 'related_entries' not in locals() else len(related_entries)
+                    not_enough_references += 1 if 'related_entries' not in locals() else len(related_entries)
 
 
     pbar.close()
-    logger.info(f"A total of {failed} entries were impossible to match.")
+    logger.info(f"A total of {not_enough_references} entries did not have enough references to match. {failed} were not matched successfully.")
+    return solved_results
 
 
 ## helper functions
@@ -155,7 +155,6 @@ def decide_orfs_here(
         ### this is the much slower but more responsive updater (see comment further up)
         if pbar is not None:
             pbar.update(1)
-    logger.info(f"modified entries: {len(modified_entries)} (of {total_hits} hits) and {len(questionableEntries)} original entries")
     return modified_entries
 
 def build_seq_from_pandas_entry(entry: pd.Series, translation_table):
