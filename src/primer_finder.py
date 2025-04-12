@@ -10,13 +10,13 @@ from tqdm import tqdm
 from typing import TextIO, Any
 
 from src.match_result import MatchResult
-from src.orf_finder import list_possible_orf, Orf_Finder
+from src.orf_finder import list_possible_orf, OrfFinder
 from src.primer_data_dto import PrimerDataDTO, get_primer_dto_from_args
 from src.primer_finder_regex import *
-from src.smith_waterman import Smith_Waterman
+from src.smith_waterman import SmithWaterman
 
 logger = logging.getLogger(__name__)
-smith_waterman: Smith_Waterman
+smith_waterman: SmithWaterman
 
 # todo: create options.py creation + parameterization
 
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     logging.getLogger().addHandler(logging.StreamHandler())
 
     args = compute_arguments()
-    smith_waterman = Smith_Waterman(
+    smith_waterman = SmithWaterman(
         gap_penalty=args.gap_penalty,
         triple_gap_penalty=args.gap3_penalty,
         end_of_read_bonus_value = args.end_of_read_bonus,
@@ -281,7 +281,7 @@ if __name__ == "__main__":
 
         if args.orf_matching:
             logger.info(f"Starting orf-matching process.")
-            orf_finder = Orf_Finder(
+            orf_finder = OrfFinder(
                 lower_reference_threshold=args.orf_matching_threshold,
                 upper_reference_threshold=args.orf_matching_upper_threshold,
                 translation_table=args.protein_translation_table,

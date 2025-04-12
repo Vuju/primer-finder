@@ -4,8 +4,10 @@ from src.match_result import MatchResult
 def default_substitution_function(letter_in_primer, letter_in_read) -> float:
     """
     The default substitution function will return 2 if the primer character could be substituted by the sequence character match, -1 otherwise.
+
     :param letter_in_primer: A character from a primer sequence.
     :param letter_in_read: A character from a DNA sequence.
+
     :return: 2 for a match, -1 otherwise.
     """
     match letter_in_read:
@@ -21,12 +23,13 @@ def default_substitution_function(letter_in_primer, letter_in_read) -> float:
             raise Exception(f"unknown literal in read sequence: '{letter_in_read}'")
 
 
-class Smith_Waterman:
+class SmithWaterman:
 
     def __init__(self, gap_penalty, triple_gap_penalty, end_of_read_bonus_value, sub_function):
         """
-        A Smith_Waterman instance. As many parameters will be kept the same over
-         many calls, they are to be set at construction time.
+        A SmithWaterman instance. As many parameters will be kept
+        the same over many calls, they are to be set at construction time.
+
         :param gap_penalty: The penalty value for skipping a single nucleotide. Default -2.
         :param triple_gap_penalty: The penalty value for skipping a triplet. Default -2.
         :param end_of_read_bonus_value: Value of bonus per missing base pair at the end of a read.
@@ -57,14 +60,16 @@ class Smith_Waterman:
             primer_sequence,
             dna_sequence,
             are_ends_eligible_for_bonus
-    ):
+    ) -> MatchResult:
         """
         An implementation of the Smith-Waterman algorithm for local sequence alignment.
         Extended with the functionality to jump triplets.
+
         :param primer_sequence: The first sequence. In my case a primer, hence the name.
         :param dna_sequence: The second sequence. In this case the read in which I want to find my primer sequence.
         :param are_ends_eligible_for_bonus: Tuple whether to give a bonus for a partial match at the beginning and end of read.
-        :return MatchResult: a MatchResult object containing the match score, traceback within the dna_sequence
+
+        :returns: A MatchResult object containing the match score, traceback within the dna_sequence
         as well as indexes of the match start and end within the dna_sequence.
         """
         # construction

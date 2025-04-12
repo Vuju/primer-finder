@@ -7,6 +7,7 @@ import pandas as pd
 import pyhmmer
 
 from Bio.Seq import Seq
+from pyhmmer.easel import TextSequence
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -18,34 +19,40 @@ def list_possible_orf(sequence, translation_table):
         framed_sequence = dna[frame:]
         framed_sequence = _trim_to_triplet(framed_sequence)
         protein = framed_sequence.translate(table=translation_table)
-        # The "*" character denotes a stop command in the amino-acid sequence.
-        if '*' not in protein:
+        if '*' not in protein:          # The "*" character denotes a stop command in the amino-acid sequence.
             orf_list.append(frame)
     return orf_list
 
 
-class Orf_Finder:
+class OrfFinder:
 
     progress_bar: tqdm
-    def __init__(self, translation_table, muscle_path, e_value_threshold,
-                 lower_reference_threshold, upper_reference_threshold):
+    def __init__(self,
+                 translation_table,
+                 muscle_path,
+                 e_value_threshold,
+                 lower_reference_threshold: int,
+                 upper_reference_threshold: int,
+    ):
         """
-        an instance of the Orf_Finder class. Parameters should be set on initialization.
-        :param translation_table: Translation table for dna --> amino.
+        an instance of the OrfFinder class. Parameters should be set on initialization.
+
+        :param translation_table: Translation table for dna --> amino acid for the Bio.Seq.translate() method.
         :param muscle_path: system path to your muscle binary.
-        :param e_value_threshold:
-        :param lower_reference_threshold:
-        :param upper_reference_threshold:
+        :param e_value_threshold: Sets the e-value threshold for querying an orf-candidate against the HMM.
+        :param lower_reference_threshold: Defines the least number of sequences necessary to build an HMM.
+        :param upper_reference_threshold: Defines the upper limit for the number of sequences used to build an HMM.
         """
-        self.translation_table = translation_table,
-        self.muscle_path = muscle_path,
-        self.e_value = e_value_threshold or 1000,
-        self.threshold = lower_reference_threshold or 10,
-        self.upper_threshold = upper_reference_threshold or 50
+        self.translation_table = translation_table
+        self.muscle_path = muscle_path
+        self.e_value_threshold = e_value_threshold or 1000
+        self.lower_reference_threshold = lower_reference_threshold or 10
+        self.upper_reference_threshold = upper_reference_threshold or 50
 
     def solve_orfs_for_df(self, df: pd.DataFrame):
         """
         Takes a dataframe of sequences and attempts to solve all ambiguous orfs.
+
         :param df: The dataframe of all sequences.
         :return: all sequences with a definite or decided orf.
         """
@@ -69,13 +76,11 @@ class Orf_Finder:
                 comparison_group = solved_results[solved_results[level] == level_value]
                 group_size = len(comparison_group)
 
-                if group_size >= self.threshold:
-                    comparison_group = comparison_group.sample(min(self.upper_threshold, group_size))
+                if group_size >= self.lower_reference_threshold:
+                    comparison_group = comparison_group.sample(min(self.upper_reference_threshold, group_size))
                     related_entries = unsolved_results[unsolved_results[level] == level_value]
-                    solved = self.decide_orfs_here(
-                        comparison_group,
-                        related_entries
-                    )
+                    hmm = self._construct_hmm(comparison_group)
+                    solved = self._query_sequences_against_hmm(hmm, related_entries)
                     failed += len(related_entries) - len(solved)
                     solved_results = pd.concat([solved_results, solved], ignore_index=True)
 
@@ -97,38 +102,28 @@ class Orf_Finder:
 
     ## helper functions
 
-    def decide_orfs_here(self, reference_entries: pd.DataFrame, ambiguous_entries: pd.DataFrame):
+    def _construct_hmm(self, reference_entries: pd.DataFrame) -> pyhmmer.plan7.HMM:
         """
-        By building and querying against an hmm, this method decides the most likely orf.
-        Takes a set of dna sequences with multiple possible open reading frames (orf),
-        and a set of reference sequences that belong to a related taxonomy and only have a single possible orf.
+        Takes a list of related sequences, aligns them with "muscle", and builds a HMM.
 
         :param reference_entries: Set of biologically related, but solved sequences.
-        :param ambiguous_entries: Set of biologically related sequences with multiple possible orf.
-        :return: A set of sequences that have been decided. Decision stored in (new) column "ORF".
+        :return: An HMM constructed with an MSA of the input sequences.
         """
-        # form the input to required shape
         amino_alphabet = pyhmmer.easel.Alphabet.amino()
 
-        referenceSequences = np.zeros(shape=len(reference_entries), dtype=pyhmmer.easel.TextSequence)
-        referenceSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
+        reference_sequences = np.zeros(shape=len(reference_entries), dtype=pyhmmer.easel.TextSequence)
+        reference_sequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
         reference_entries = reference_entries.reset_index(drop=True)
         for i, row in reference_entries.iterrows():
-            referenceSequences[i] = self.build_seq_from_pandas_entry(row)
-
-        questionableSequences = np.zeros(shape=(len(ambiguous_entries), 3), dtype=pyhmmer.easel.TextSequence)
-        questionableSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
-        ambiguous_entries = ambiguous_entries.reset_index(drop=True)
-        for i, row in ambiguous_entries.iterrows():
-            questionableSequences[i] = self.process_ambiguous_orf(row)
+            reference_sequences[i] = self._get_amino_text_sequence_of(row)
 
         # do MSA with muscle for the references
         tmp_in_file = "tmp_in.fasta"
         tmp_out_file = "tmp_out.fasta"
         with open(tmp_in_file, "wb") as f:
-            for seq in referenceSequences:
+            for sequence in reference_sequences:
                 # print(seq.sequence)
-                seq.write(f)
+                sequence.write(f)
         subprocess.run([f"{self.muscle_path}", "-align", tmp_in_file, "-output", tmp_out_file],
                        stdout=subprocess.PIPE,
                        stderr=subprocess.PIPE,
@@ -142,16 +137,38 @@ class Orf_Finder:
         digital_msa = msa.digitize(alphabet=amino_alphabet)
         hmm, _, _ = builder.build_msa(digital_msa, background)
 
+        return hmm
+
+    def _query_sequences_against_hmm(self, hmm, ambiguous_entries):
+        """
+        Takes a set of sequences with multiple possible orfs and queries them against the hmm.
+        Returns the (sub)set of decided sequences with a new column "ORF", which contains the most likely orf.
+
+        :param hmm: A Hidden Markov Model constructed with related, but solved sequences.
+        :param ambiguous_entries: Set of biologically related sequences with multiple possible orf.
+
+        :return: A set of sequences that have been decided. Decision stored in (new) column "ORF".
+        """
+        amino_alphabet = pyhmmer.easel.Alphabet.amino()
+
+        ambiguous_sequences = np.zeros(shape=(len(ambiguous_entries), 3), dtype=pyhmmer.easel.TextSequence)
+        ambiguous_sequences.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
+        ambiguous_entries = ambiguous_entries.reset_index(drop=True)
+        for i, row in ambiguous_entries.iterrows():
+            ambiguous_sequences[i] = self._get_possible_amino_text_sequences_of(row)
+
+
+        background = pyhmmer.plan7.Background(amino_alphabet)
         pipeline = pyhmmer.plan7.Pipeline(amino_alphabet, background)
         pipeline.bias_filter = False
-        pipeline.E = self.e_value
+        pipeline.E = self.e_value_threshold
 
         ambiguous_entries.loc[:, 'ORF'] = ''
         modified_entries = pd.DataFrame(columns=ambiguous_entries.columns)
         total_hits = 0
 
-        # query all possible orfs against the hmm for each original entry..
-        for query in questionableSequences:
+        # query all possible orfs against the hmm for each original entry
+        for query in ambiguous_sequences:
             digital_ambiguous_sequences = [seq.digitize(alphabet=amino_alphabet) for seq in query]
             sequenceBlock = pyhmmer.easel.DigitalSequenceBlock(alphabet=amino_alphabet,
                                                                iterable=digital_ambiguous_sequences)
@@ -169,7 +186,8 @@ class Orf_Finder:
                 ambiguous_entries.loc[ambiguous_entries['Read ID'] == read_id, 'ORF'] = correct_orf
                 if len(modified_entries[modified_entries["Read ID"] == read_id]) == 0:
                     modified_entries = pd.concat([modified_entries,
-                                                 ambiguous_entries.loc[ambiguous_entries['Read ID'] == read_id].copy()],
+                                                  ambiguous_entries.loc[
+                                                      ambiguous_entries['Read ID'] == read_id].copy()],
                                                  ignore_index=True)
 
             if self.progress_bar is not None:
@@ -177,18 +195,16 @@ class Orf_Finder:
 
         return modified_entries
 
-    def build_seq_from_pandas_entry(self, entry: pd.Series):
+    def _get_amino_text_sequence_of(self, entry: pd.Series) -> pyhmmer.easel.TextSequence:
         dna = Seq(entry["read"])
         frame = int(entry["ORF"])
         framed_region = dna[frame:]
         framed_region = _trim_to_triplet(framed_region)
         protein = framed_region.translate(table=self.translation_table)
-
         text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
-
         return text_seq
 
-    def process_ambiguous_orf(self, entry: pd.Series):
+    def _get_possible_amino_text_sequences_of(self, entry: pd.Series) -> [TextSequence]:
         possible_orfs = ast.literal_eval(entry["possible_orfs"])
         seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
         seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
@@ -197,14 +213,11 @@ class Orf_Finder:
             framed_region = dna[possible_orf:]
             framed_region = _trim_to_triplet(framed_region)
             protein = framed_region.translate(table=self.translation_table)
-
             text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
                                                  sequence=str(protein))
             seqs[i] = text_seq
         return seqs
 
-
-# helper functions
 
 def _trim_to_triplet(sequence):
     remainder = len(sequence) % 3
