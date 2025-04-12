@@ -15,193 +15,199 @@ def list_possible_orf(sequence, translation_table):
     dna = Seq(sequence)
     orf_list = []
     for frame in range(3):
-        framed_seq = dna[frame:]
-
-        # trim sequqence, because Bio is pissed if I don't
-        framed_seq = trim_to_triplet(framed_seq)
-
-        # Translate using (by default) invertebrate mitochondrial code
-        protein = framed_seq.translate(table=translation_table)
+        framed_sequence = dna[frame:]
+        framed_sequence = _trim_to_triplet(framed_sequence)
+        protein = framed_sequence.translate(table=translation_table)
+        # The "*" character denotes a stop command in the amino-acid sequence.
         if '*' not in protein:
             orf_list.append(frame)
     return orf_list
 
-def solve_orfs_for_df(
-        df: pd.DataFrame,
-        translation_table,
-        muscle_path,
-        e_value = 1000,
-        threshold = 10,
-        upper_threshold = 50
-):
 
-    remaining_results = df[~df['possible_orfs'].str.contains(r'\[\]')]
-    solved_results = remaining_results[~remaining_results['possible_orfs'].str.contains(',')]
-    remaining_results = remaining_results[~(remaining_results['Read ID'].isin(solved_results['Read ID']))]
-    solved_results["ORF"] = solved_results.apply(lambda x: x["possible_orfs"][1], axis=1)
+class Orf_Finder:
 
-    not_enough_references = 0
-    failed = 0
+    progress_bar: tqdm
+    def __init__(self, translation_table, muscle_path, e_value_threshold,
+                 lower_reference_threshold, upper_reference_threshold):
+        """
+        an instance of the Orf_Finder class. Parameters should be set on initialization.
+        :param translation_table: Translation table for dna --> amino.
+        :param muscle_path: system path to your muscle binary.
+        :param e_value_threshold:
+        :param lower_reference_threshold:
+        :param upper_reference_threshold:
+        """
+        self.translation_table = translation_table,
+        self.muscle_path = muscle_path,
+        self.e_value = e_value_threshold or 1000,
+        self.threshold = lower_reference_threshold or 10,
+        self.upper_threshold = upper_reference_threshold or 50
 
-    pbar = tqdm(total=len(remaining_results))
-    taxonomic_levels = ['Species', 'Genus', 'Family', 'Order', 'Class']
+    def solve_orfs_for_df(self, df: pd.DataFrame):
+        """
+        Takes a dataframe of sequences and attempts to solve all ambiguous orfs.
+        :param df: The dataframe of all sequences.
+        :return: all sequences with a definite or decided orf.
+        """
+        unsolved_results = df[~df['possible_orfs'].str.contains(r'\[\]')]
+        solved_results = unsolved_results[~unsolved_results['possible_orfs'].str.contains(',')]
+        unsolved_results = unsolved_results[~(unsolved_results['Read ID'].isin(solved_results['Read ID']))]
+        solved_results["ORF"] = solved_results.apply(lambda x: x["possible_orfs"][1], axis=1)
 
-    while remaining_results.size > 0:
-        current_entry = remaining_results.iloc[0]
+        not_enough_references = 0
+        failed = 0
 
-        # Try to match at each taxonomic level, from specific to general
-        for level in taxonomic_levels:
-            level_value = current_entry[level]
-            comp_group = solved_results[solved_results[level] == level_value]
-            group_size = len(comp_group)
+        self.progress_bar = tqdm(total=len(unsolved_results))
+        taxonomic_levels = ['Species', 'Genus', 'Family', 'Order', 'Class']
 
-            if group_size >= threshold:
-                comp_group = comp_group.sample(min(upper_threshold, group_size))
-                related_entries = remaining_results[remaining_results[level] == level_value]
-                solved = decide_orfs_here(
-                    comp_group,
-                    related_entries,
-                    translation_table=translation_table,
-                    muscle_path=muscle_path,
-                    e_value=e_value,
-                    pbar=pbar
-                )
-                failed += len(related_entries) - len(solved)
-                solved_results = pd.concat([solved_results, solved], ignore_index=True)
+        while unsolved_results.size > 0:
+            current_entry = unsolved_results.iloc[0]
 
-                remaining_results = remaining_results[~(remaining_results[level] == level_value)]
-                break
-            else:
-                # If we've tried all levels and none are big enough
-                if level == taxonomic_levels[-1]:
-                    logger.warning(f"Removing Family '{current_entry['Family']}' with {len(solved_results[solved_results['Family'] == current_entry['Family']])} members to continue.")
-                    remaining_results = remaining_results[~(remaining_results['Family'] == current_entry['Family'])]
-                    not_enough_references += 1 if 'related_entries' not in locals() else len(related_entries)
+            # Try to match at each taxonomic level, from specific to general
+            for level in taxonomic_levels:
+                level_value = current_entry[level]
+                comparison_group = solved_results[solved_results[level] == level_value]
+                group_size = len(comparison_group)
 
+                if group_size >= self.threshold:
+                    comparison_group = comparison_group.sample(min(self.upper_threshold, group_size))
+                    related_entries = unsolved_results[unsolved_results[level] == level_value]
+                    solved = self.decide_orfs_here(
+                        comparison_group,
+                        related_entries
+                    )
+                    failed += len(related_entries) - len(solved)
+                    solved_results = pd.concat([solved_results, solved], ignore_index=True)
 
-    pbar.close()
-    logger.info(f"A total of {not_enough_references} entries did not have enough references to match. {failed} were not matched successfully.")
-    return solved_results
+                    unsolved_results = unsolved_results[~(unsolved_results[level] == level_value)]
+                    break
+                else:
+                    # If we've tried all levels and none are big enough
+                    if level == taxonomic_levels[-1]:
+                        number_of_unsolvable_entries = len(solved_results[solved_results['Species'] == current_entry['Species']])
+                        logger.warning(f"Removing Species '{current_entry['Species']}' with {number_of_unsolvable_entries} members to continue.")
+                        unsolved_results = unsolved_results[~(unsolved_results['Species'] == current_entry['Species'])]
+                        not_enough_references += number_of_unsolvable_entries
 
 
-## helper functions
+        self.progress_bar.close()
+        logger.info(f"A total of {not_enough_references} entries did not have enough references to match. {failed} were not matched successfully.")
+        return solved_results
 
-def decide_orfs_here(
-        referenceEntries: pd.DataFrame,
-        questionableEntries: pd.DataFrame,
-        translation_table,
-        muscle_path,
-        e_value = 1000,
-        pbar=None
-):
-    alphabet = pyhmmer.easel.Alphabet.amino()
 
-    referenceSequences = np.zeros(shape=len(referenceEntries), dtype=pyhmmer.easel.TextSequence)
-    referenceSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
-    referenceEntries = referenceEntries.reset_index(drop=True)
-    for i, row in referenceEntries.iterrows():
-        referenceSequences[i] = build_seq_from_pandas_entry(row, translation_table=translation_table)
+    ## helper functions
 
-    questionableSequences = np.zeros(shape=(len(questionableEntries), 3), dtype=pyhmmer.easel.TextSequence)
-    questionableSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
-    questionableEntries = questionableEntries.reset_index(drop=True)
-    for i, row in questionableEntries.iterrows():
-        questionableSequences[i] = process_ambiguous_orf(row, translation_table=translation_table)
+    def decide_orfs_here(self, reference_entries: pd.DataFrame, ambiguous_entries: pd.DataFrame):
+        """
+        By building and querying against an hmm, this method decides the most likely orf.
+        Takes a set of dna sequences with multiple possible open reading frames (orf),
+        and a set of reference sequences that belong to a related taxonomy and only have a single possible orf.
 
-    in_file = "tmp_in.fasta"
-    with open(in_file, "wb") as f:
-        for seq in referenceSequences:
-            # print(seq.sequence)
-            seq.write(f)
-    out_file = "tmp_out.fasta"
-    subprocess.run([f"{muscle_path}", "-align", in_file, "-output", out_file],
-                   stdout=subprocess.PIPE,
-                   stderr=subprocess.PIPE,
-                   text=True)
+        :param reference_entries: Set of biologically related, but solved sequences.
+        :param ambiguous_entries: Set of biologically related sequences with multiple possible orf.
+        :return: A set of sequences that have been decided. Decision stored in (new) column "ORF".
+        """
+        # form the input to required shape
+        amino_alphabet = pyhmmer.easel.Alphabet.amino()
 
-    msa = pyhmmer.easel.MSAFile(out_file).read()
-    msa.name = "tmpMSA".encode()
-    background = pyhmmer.plan7.Background(alphabet)
-    builder = pyhmmer.plan7.Builder(alphabet)
-    digital_msa = msa.digitize(alphabet=alphabet)
-    hmm, profile, optimized_profile = builder.build_msa(digital_msa, background)
+        referenceSequences = np.zeros(shape=len(reference_entries), dtype=pyhmmer.easel.TextSequence)
+        referenceSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
+        reference_entries = reference_entries.reset_index(drop=True)
+        for i, row in reference_entries.iterrows():
+            referenceSequences[i] = self.build_seq_from_pandas_entry(row)
 
-    pipeline = pyhmmer.plan7.Pipeline(alphabet, background)
-    pipeline.bias_filter = False
-    pipeline.E = e_value
+        questionableSequences = np.zeros(shape=(len(ambiguous_entries), 3), dtype=pyhmmer.easel.TextSequence)
+        questionableSequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
+        ambiguous_entries = ambiguous_entries.reset_index(drop=True)
+        for i, row in ambiguous_entries.iterrows():
+            questionableSequences[i] = self.process_ambiguous_orf(row)
 
-    questionableEntries.loc[:, 'ORF'] = ''
-    modified_entries = pd.DataFrame(columns=questionableEntries.columns)
-    total_hits = 0
+        # do MSA with muscle for the references
+        tmp_in_file = "tmp_in.fasta"
+        tmp_out_file = "tmp_out.fasta"
+        with open(tmp_in_file, "wb") as f:
+            for seq in referenceSequences:
+                # print(seq.sequence)
+                seq.write(f)
+        subprocess.run([f"{self.muscle_path}", "-align", tmp_in_file, "-output", tmp_out_file],
+                       stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE,
+                       text=True)
 
-    for query in questionableSequences:
+        # build hmm profile from the result
+        msa = pyhmmer.easel.MSAFile(tmp_out_file).read()
+        msa.name = "tmpMSA".encode()
+        background = pyhmmer.plan7.Background(amino_alphabet)
+        builder = pyhmmer.plan7.Builder(amino_alphabet)
+        digital_msa = msa.digitize(alphabet=amino_alphabet)
+        hmm, _, _ = builder.build_msa(digital_msa, background)
 
-        dig_questionable_sequences = [seq.digitize(alphabet=alphabet) for seq in query]
-        sequenceBlock = pyhmmer.easel.DigitalSequenceBlock(alphabet=alphabet, iterable=dig_questionable_sequences)
-        top_hits = pipeline.search_hmm(query=hmm, sequences=sequenceBlock)
-        if len(top_hits.reported) > 0:
-            total_hits += len(top_hits.reported)
-            top_hit = top_hits[0]
+        pipeline = pyhmmer.plan7.Pipeline(amino_alphabet, background)
+        pipeline.bias_filter = False
+        pipeline.E = self.e_value
 
-            for hit in top_hits:
-                if top_hit is not None and top_hit.name.decode() != "":
-                    if hit.evalue < top_hit.evalue:
-                        top_hit = hit
+        ambiguous_entries.loc[:, 'ORF'] = ''
+        modified_entries = pd.DataFrame(columns=ambiguous_entries.columns)
+        total_hits = 0
 
-            [read_id, correct_orf] = top_hit.name.decode().split("_")
-            questionableEntries.loc[questionableEntries['Read ID'] == read_id, 'ORF'] = correct_orf
-            if len(modified_entries[modified_entries["Read ID"] == read_id]) == 0:
-                modified_entries = pd.concat([modified_entries, questionableEntries.loc[questionableEntries['Read ID'] == read_id].copy()], ignore_index=True)
-        ### this is the much slower but more responsive updater (see comment further up)
-        if pbar is not None:
-            pbar.update(1)
-    return modified_entries
+        # query all possible orfs against the hmm for each original entry..
+        for query in questionableSequences:
+            digital_ambiguous_sequences = [seq.digitize(alphabet=amino_alphabet) for seq in query]
+            sequenceBlock = pyhmmer.easel.DigitalSequenceBlock(alphabet=amino_alphabet,
+                                                               iterable=digital_ambiguous_sequences)
+            top_hits = pipeline.search_hmm(query=hmm, sequences=sequenceBlock)
+            if len(top_hits.reported) > 0:
+                total_hits += len(top_hits.reported)
+                top_hit = top_hits[0]
+                for hit in top_hits:
+                    if top_hit is not None and top_hit.name.decode() != "":
+                        if hit.evalue < top_hit.evalue:
+                            top_hit = hit
 
-def build_seq_from_pandas_entry(entry: pd.Series, translation_table):
-    dna = Seq(entry["read"])
-    frame = int(entry["ORF"])
-    framed_region = dna[frame:]
-    framed_region = trim_to_triplet(framed_region)
-    protein = framed_region.translate(table=translation_table)
+                # store best result
+                [read_id, correct_orf] = top_hit.name.decode().split("_")
+                ambiguous_entries.loc[ambiguous_entries['Read ID'] == read_id, 'ORF'] = correct_orf
+                if len(modified_entries[modified_entries["Read ID"] == read_id]) == 0:
+                    modified_entries = pd.concat([modified_entries,
+                                                 ambiguous_entries.loc[ambiguous_entries['Read ID'] == read_id].copy()],
+                                                 ignore_index=True)
 
-    text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
+            if self.progress_bar is not None:
+                self.progress_bar.update(1)
 
-    return text_seq
+        return modified_entries
 
-def process_ambiguous_orf(entry: pd.Series, translation_table):
-    possible_orfs = ast.literal_eval(entry["possible_orfs"])
-    seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
-    seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
-    for i, possible_orf in enumerate(possible_orfs):
+    def build_seq_from_pandas_entry(self, entry: pd.Series):
         dna = Seq(entry["read"])
-        framed_region = dna[possible_orf:]
-        framed_region = trim_to_triplet(framed_region)
-        protein = framed_region.translate(table=translation_table)
+        frame = int(entry["ORF"])
+        framed_region = dna[frame:]
+        framed_region = _trim_to_triplet(framed_region)
+        protein = framed_region.translate(table=self.translation_table)
 
-        text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
-                                             sequence=str(protein))
-        seqs[i] = text_seq
-    return seqs
+        text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
 
-def trim_to_triplet(sequence):
+        return text_seq
+
+    def process_ambiguous_orf(self, entry: pd.Series):
+        possible_orfs = ast.literal_eval(entry["possible_orfs"])
+        seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
+        seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
+        for i, possible_orf in enumerate(possible_orfs):
+            dna = Seq(entry["read"])
+            framed_region = dna[possible_orf:]
+            framed_region = _trim_to_triplet(framed_region)
+            protein = framed_region.translate(table=self.translation_table)
+
+            text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
+                                                 sequence=str(protein))
+            seqs[i] = text_seq
+        return seqs
+
+
+# helper functions
+
+def _trim_to_triplet(sequence):
     remainder = len(sequence) % 3
     if remainder != 0:
         sequence = sequence[:-remainder]
     return sequence
-
-def pad_sequences(sequences, minimum=0, pad_char='X'):
-    max_length = len(max(sequences, key=len))
-    max_length = max(max_length, minimum)
-
-    padded_sequences = np.zeros(shape=len(sequences), dtype=pyhmmer.easel.TextSequence)
-    for i, seq in enumerate(sequences):
-        padded_sequence = seq.sequence + pad_char * (max_length - len(seq))
-        padded_sequences[i] = pyhmmer.easel.TextSequence(name=seq.name, sequence=padded_sequence)
-
-    return np.array(padded_sequences, dtype=pyhmmer.easel.TextSequence)
-
-def pad_sequences_2d(sequences, minimum, pad_char='X'):
-    padded_matrix = np.zeros(shape=(len(sequences), len(sequences[0])), dtype=pyhmmer.easel.TextSequence)
-    for i in range(len(sequences)):
-        padded_matrix[i] = pad_sequences(sequences[i], minimum, pad_char)
-    return np.array(padded_matrix)

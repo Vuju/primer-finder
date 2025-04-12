@@ -10,36 +10,33 @@ from tqdm import tqdm
 from typing import TextIO, Any
 
 from src.match_result import MatchResult
-from src.orf_finder import list_possible_orf, solve_orfs_for_df
+from src.orf_finder import list_possible_orf, Orf_Finder
 from src.primer_data_dto import PrimerDataDTO, get_primer_dto_from_args
 from src.primer_finder_regex import *
-from src.smith_waterman import smith_waterman
+from src.smith_waterman import Smith_Waterman
 
 logger = logging.getLogger(__name__)
+smith_waterman: Smith_Waterman
 
-# optional: improve offsets to be more accurate
-# optional: create options.ini creation + parameterization?
-
-
-
+# todo: create options.py creation + parameterization
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process sequence alignment parameters.")
 
     parser.add_argument("--primer_finder", type=bool, default=True,
                         help="Flag as false to disable the primer-searching algorithm.")
-    parser.add_argument("--orf_matching", type=bool, default=True,
+    parser.add_argument("--orf_matching", type=bool, default=False,
                         help="Flag as false to disable the orf-decision algorithm.")
 
     parser.add_argument("--search_area", type=float, default=0.2, help="This value will determine, "
                                                         "how much extra area the smith waterman algorithm will search, "
                                                         "if the other primer has already been found with enough certainty (set by '--sw_cutoff').")
-    parser.add_argument("--sw_score_cutoff", type=float, default=0.8, help="Smith-Waterman score cutoff (default: 0.8)")
+    parser.add_argument("--smith_waterman_score_cutoff", type=float, default=0.8, help="Smith-Waterman score cutoff (default: 0.8)")
 
     parser.add_argument("--primer_information", type=str, default="./data/primer-information.csv",
                         help="CSV list of forward and reverse primer sequence, as well as the expected distance inbetween.")
 
-    parser.add_argument("--muscle_path", type=str, default="/mnt/c/Users/Me/bin/muscle",
+    parser.add_argument("--muscle_path", type=str, default="/mnt/c/Users/Julian/bin/muscle",
                         help="Path to the muscle binary/executable. I run with version 5.3, and it will be used to run 'muscle_path -align tmp_in.fasta -out tmp_out.fasta'")
 
     parser.add_argument("--input_file_path", type=str, default="./data/DB.COX1.fna", help="Path to input sequence file")
@@ -61,10 +58,10 @@ def compute_arguments():
     args = parse_arguments()
 
     ### hardcoded parameters:
-    # substitution function (see later)
-    args.end_of_read_bonus = 1
     args.gap_penalty = -2
     args.gap3_penalty = -2
+    args.end_of_read_bonus = 1
+    args.substitution_function = None
     args.chunksize = 100
     args.e_value = 1000
     ### end hardcoded parameters
@@ -94,21 +91,6 @@ def compute_arguments():
 
 
 ### Function definitions
-
-def substitution_function(p, r) -> float:
-    match r:
-        case 'A':
-            return 2 if p in "AWMRDHVN" else -1
-        case 'C':
-            return 2 if p in "CSMYBHVN" else -1
-        case 'G':
-            return 2 if p in "GSKRBDVN" else -1
-        case 'T':
-            return 2 if p in "TWKYBDHN" else -1
-        case _:
-            raise Exception(f"unknown literal in read sequence: '{r}'")
-
-
 def read_pairs(file_path):
     file: TextIO
     if file_path.endswith('.gz'):
@@ -154,27 +136,14 @@ def compute_regex_match(primer, primer_regex, read):
     read_match = ''
     index, end_index = find_exact_match(primer_regex, read)
     if index != -1:
-        score = len(primer) * substitution_function('A', 'A')
+        score = len(primer) * smith_waterman.match_value
         read_match = read[index:end_index]
     return MatchResult(score, read_match, index, end_index)
 
 
-def compute_smith_waterman(primer, read, skip, skip3, substitution, are_ends, end_bonus):
-    score, _, read_match, index = smith_waterman(
-        primer=primer,
-        read=read,
-        gap=skip,
-        gap3=skip3,
-        substitution_function=substitution,
-        end_of_read_bonus=are_ends,
-        end_of_read_bonus_value=end_bonus
-    )
-    return MatchResult(score, read_match, index, index + len(read_match))
-
-
 ### the main processing function
 
-def process_pair(primer_data: PrimerDataDTO, pair):
+def process_sequence(primer_data: PrimerDataDTO, sequence_object):
     # initializing all flags
     _sequence_found = False
     _orf_calculated = 0
@@ -183,61 +152,61 @@ def process_pair(primer_data: PrimerDataDTO, pair):
     offset = int(primer_data.distance * primer_data.search_area)
     distance = primer_data.distance
 
-    read_metadata, sequence = pair
-    read = sequence.strip()
-    f_search_interval, b_search_interval = (0, len(read)), (0, len(read))
+    def limit_to_interval_after(i: int):
+        return (i + distance - offset,
+                i + distance + len(primer_data.backward_primer) + offset)
+    def limit_to_interval_before(i: int):
+        return (max(0, i - distance - len(primer_data.forward_primer) - offset),
+                max(0, i - distance + offset))
+
+    sequence_metadata, dna_sequence = sequence_object
+    dna_sequence = dna_sequence.strip()
+    forward_search_interval, backward_search_interval = (0, len(dna_sequence)), (0, len(dna_sequence))
 
     ## first check for exact matches
-    f_match = compute_regex_match(primer_data.f_primer, primer_data.f_primer_regex, read)
-    if f_match.start_index != -1:
-        b_search_interval = (f_match.end_index + distance - offset, f_match.end_index + distance + len(primer_data.b_primer) + offset)
+    forward_match = compute_regex_match(primer_data.forward_primer,
+                                  primer_data.forward_primer_regex,
+                                  dna_sequence)
+    if forward_match.start_index != -1:
+        backward_search_interval = limit_to_interval_after(forward_match.end_index)
 
-    b_match = compute_regex_match(primer_data.b_primer, primer_data.b_primer_regex, read[b_search_interval[0]:b_search_interval[1]])
-    if b_match.start_index != -1:
-        b_match.start_index += b_search_interval[0]
-        b_match.end_index += b_search_interval[0]
-        f_search_interval = (max(0, b_match.start_index - distance - len(primer_data.f_primer) - offset), max(0, b_match.start_index - distance + offset))
-
+    backward_match = compute_regex_match(primer_data.backward_primer,
+                                  primer_data.backward_primer_regex,
+                                  dna_sequence[backward_search_interval[0]:backward_search_interval[1]])
+    if backward_match.start_index != -1:
+        backward_match.start_index += backward_search_interval[0]
+        backward_match.end_index += backward_search_interval[0]
+        forward_search_interval = limit_to_interval_before(backward_match.start_index)
 
     ## for each missing exact match, try smith waterman:
-    if f_match.start_index == -1:
-        f_match = compute_smith_waterman(
-            primer=primer_data.f_primer,
-            read=read[f_search_interval[0]:f_search_interval[1]],
-            skip=primer_data.sw_gap,
-            skip3=primer_data.sw_gap3,
-            substitution=substitution_function,
-            are_ends=(f_search_interval[0] == 0, f_search_interval[1] == len(read)),
-            end_bonus=args.end_of_read_bonus
+    if forward_match.is_mismatch():
+        forward_match = smith_waterman.align_partial(
+            primer=primer_data.forward_primer,
+            super_sequence=dna_sequence,
+            search_interval=forward_search_interval
         )
-        f_match.start_index += f_search_interval[0]
-        f_match.end_index += f_search_interval[0]
 
-        score_threshold = len(primer_data.f_primer) * substitution_function('A', 'A') * primer_data.sw_score_cutoff
+        score_threshold = (len(primer_data.forward_primer)
+                           * smith_waterman.match_value
+                           * primer_data.smith_waterman_score_cutoff)
 
-        if (b_match.start_index == -1) and (f_match.score > score_threshold):
-            b_search_interval = (f_match.end_index + distance - offset, f_match.end_index + distance + len(primer_data.b_primer) + offset)
+        if backward_match.is_mismatch() and (forward_match.score > score_threshold):
+            backward_search_interval = limit_to_interval_after(forward_match.end_index)
 
-    if b_match.start_index == -1:
-        b_match = compute_smith_waterman(
-            primer=primer_data.b_primer,
-            read=read[b_search_interval[0]:b_search_interval[1]],
-            skip=primer_data.sw_gap,
-            skip3=primer_data.sw_gap3,
-            substitution=substitution_function,
-            are_ends=(b_search_interval[0] == 0, b_search_interval[1] == len(read)),
-            end_bonus=args.end_of_read_bonus
+    if backward_match.is_mismatch():
+        backward_match = smith_waterman.align_partial(
+            primer=primer_data.backward_primer,
+            super_sequence=dna_sequence,
+            search_interval=backward_search_interval
         )
-        b_match.start_index += b_search_interval[0]
-        b_match.end_index += b_search_interval[0]
 
     ## work on getting the orf
-    sequence = read[f_match.end_index:b_match.start_index]
-    _sequence_found = len(sequence.strip()) > 0
+    inter_primer_region = dna_sequence[forward_match.end_index:backward_match.start_index]
+    _sequence_found = len(inter_primer_region.strip()) > 0
     
     if _sequence_found:
          
-        possible_orf = list_possible_orf(sequence, translation_table=primer_data.translation_table)
+        possible_orf = list_possible_orf(inter_primer_region, translation_table=primer_data.translation_table)
         if len(possible_orf) == 0:
             _orf_calculated = -1
         elif len(possible_orf) == 1:
@@ -249,7 +218,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
         
         possible_orf = ([]) if _orf_calculated <= 0 else possible_orf
 
-        write_output_to_file(primer_data.output_file_path, read_metadata, f_match, b_match, sequence, possible_orf)
+        write_output_to_file(primer_data.output_file_path, sequence_metadata, forward_match, backward_match, dna_sequence, possible_orf)
 
 
 ### main script
@@ -276,6 +245,13 @@ if __name__ == "__main__":
     logging.getLogger().addHandler(logging.StreamHandler())
 
     args = compute_arguments()
+    smith_waterman = Smith_Waterman(
+        gap_penalty=args.gap_penalty,
+        triple_gap_penalty=args.gap3_penalty,
+        end_of_read_bonus_value = args.end_of_read_bonus,
+        sub_function=args.substitution_function
+    )
+
     total_number_of_sequences = 0
     for i, primer_pair in enumerate(args.primer_data):
 
@@ -295,7 +271,7 @@ if __name__ == "__main__":
             lock = Lock()
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=total_number_of_sequences)
-            worker = partial(process_pair, primer_data)
+            worker = partial(process_sequence, primer_data)
             with Pool(processes=args.num_threads, initializer=init, initargs=(lock,)) as pool:
                 for _ in pool.imap(worker, pairs, chunksize=args.chunksize):
                     pbar.update(1)
@@ -305,15 +281,15 @@ if __name__ == "__main__":
 
         if args.orf_matching:
             logger.info(f"Starting orf-matching process.")
-            df = pd.read_csv(primer_data.output_file_path, sep=";")
-            solved = solve_orfs_for_df(
-                df=df,
-                threshold=args.orf_matching_threshold,
-                upper_threshold=args.orf_matching_upper_threshold,
+            orf_finder = Orf_Finder(
+                lower_reference_threshold=args.orf_matching_threshold,
+                upper_reference_threshold=args.orf_matching_upper_threshold,
                 translation_table=args.protein_translation_table,
                 muscle_path=args.muscle_path,
-                e_value=args.e_value
+                e_value_threshold=args.e_value
             )
+            all_entries = pd.read_csv(primer_data.output_file_path, sep=";")
+            solved = orf_finder.solve_orfs_for_df(df=all_entries)
             logger.info("Starting write-back.")
             solved.to_csv(primer_data.output_file_path)
 

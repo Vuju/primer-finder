@@ -47,20 +47,20 @@ python primer_finder.py --input_file_path ./data/my_sequences.fna --primer_infor
 ```
 
 ### Command-line Arguments
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--primer_finder` | True | Flag as false to disable the primer-searching algorithm. |
-| `--orf_matching` | True | Flag as false to disable the orf-decision algorithm. |
-| `--search_area` | 0.2 | Determines how much extra area the algorithm will search if the other primer has already been found with enough certainty (set by '--sw_cutoff'). |
-| `--sw_score_cutoff` | 0.8 | Smith-Waterman score cutoff for accepting a match. |
-| `--primer_information` | ./data/primer-information.csv | CSV list of forward and reverse primer sequences, with expected distances. |
-| `--muscle_path` | /mnt/c/Users/Me/bin/muscle | Path to the muscle binary/executable. Runs with version 5.3, using 'muscle_path -align tmp_in.fasta -out tmp_out.fasta'. |
-| `--input_file_path` | ./data/DB.COX1.fna | Path to input sequence file. |
-| `--output_file_path` | ./data/primer-finder-result.csv | Path to output results file. |
-| `--orf_matching_threshold` | 10 | Minimum number of similar sequences required to match an orf. |
+| Argument                         | Default | Description |
+|----------------------------------|---------|-------------|
+| `--primer_finder`                | True | Flag as false to disable the primer-searching algorithm. |
+| `--orf_matching`                 | True | Flag as false to disable the orf-decision algorithm. |
+| `--search_area`                  | 0.2 | Determines how much extra area the algorithm will search if the other primer has already been found with enough certainty (set by '--sw_cutoff'). |
+| `--smith_waterman_score_cutoff`  | 0.8 | Smith-Waterman score cutoff for accepting a match. |
+| `--primer_information`           | ./data/primer-information.csv | CSV list of forward and reverse primer sequences, with expected distances. |
+| `--muscle_path`                  | /mnt/c/Users/Me/bin/muscle | Path to the muscle binary/executable. Runs with version 5.3, using 'muscle_path -align tmp_in.fasta -out tmp_out.fasta'. |
+| `--input_file_path`              | ./data/DB.COX1.fna | Path to input sequence file. |
+| `--output_file_path`             | ./data/primer-finder-result.csv | Path to output results file. |
+| `--orf_matching_threshold`       | 10 | Minimum number of similar sequences required to match an orf. |
 | `--orf_matching_upper_threshold` | 50 | Limit of similar sequences used to match an orf. |
-| `--protein_translation_table` | 5 | Translation table for Bio.Seq translate(). This is used in orf_finder. |
-| `--num_threads` | None | Number of threads to use for processing. |
+| `--protein_translation_table`    | 5 | Translation table for Bio.Seq translate(). This is used in orf_finder. |
+| `--num_threads`                  | None | Number of threads to use for processing. |
 ## Input Format
 
 ### Primer Information CSV

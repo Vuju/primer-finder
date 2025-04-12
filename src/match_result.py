@@ -7,3 +7,6 @@ class MatchResult:
     start_index: int = -1
     end_index: int = -1
 
+    def is_mismatch(self):
+        return True if self.start_index == -1 else False
+
