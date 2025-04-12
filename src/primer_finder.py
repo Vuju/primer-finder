@@ -3,7 +3,7 @@ import gzip
 import logging
 
 from functools import partial
-from multiprocessing import Pool, Lock, cpu_count
+from multiprocessing import Pool, Lock
 
 import pandas as pd
 from tqdm import tqdm
@@ -105,7 +105,7 @@ def substitution_function(p, r) -> float:
             return 2 if p in "GSKRBDVN" else -1
         case 'T':
             return 2 if p in "TWKYBDHN" else -1
-        case default:
+        case _:
             raise Exception(f"unknown literal in read sequence: '{r}'")
 
 
@@ -159,14 +159,14 @@ def compute_regex_match(primer, primer_regex, read):
     return MatchResult(score, read_match, index, end_index)
 
 
-def compute_smith_waterman(primer, read, skip, skip3, substitution, is_end, end_bonus):
+def compute_smith_waterman(primer, read, skip, skip3, substitution, are_ends, end_bonus):
     score, _, read_match, index = smith_waterman(
         primer=primer,
         read=read,
         gap=skip,
         gap3=skip3,
         substitution_function=substitution,
-        end_of_read_bonus=is_end,
+        end_of_read_bonus=are_ends,
         end_of_read_bonus_value=end_bonus
     )
     return MatchResult(score, read_match, index, index + len(read_match))
@@ -196,7 +196,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
     if b_match.start_index != -1:
         b_match.start_index += b_search_interval[0]
         b_match.end_index += b_search_interval[0]
-        f_search_interval = (max(0, b_match.start_index - distance + offset), max(0, b_match.start_index - distance - len(primer_data.f_primer) + offset))
+        f_search_interval = (max(0, b_match.start_index - distance - len(primer_data.f_primer) - offset), max(0, b_match.start_index - distance + offset))
 
 
     ## for each missing exact match, try smith waterman:
@@ -207,7 +207,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
             skip=primer_data.sw_gap,
             skip3=primer_data.sw_gap3,
             substitution=substitution_function,
-            is_end=(f_search_interval == (0, len(read))),
+            are_ends=(f_search_interval[0] == 0, f_search_interval[1] == len(read)),
             end_bonus=args.end_of_read_bonus
         )
         f_match.start_index += f_search_interval[0]
@@ -225,7 +225,7 @@ def process_pair(primer_data: PrimerDataDTO, pair):
             skip=primer_data.sw_gap,
             skip3=primer_data.sw_gap3,
             substitution=substitution_function,
-            is_end=(b_search_interval == (0, len(read))),
+            are_ends=(b_search_interval[0] == 0, b_search_interval[1] == len(read)),
             end_bonus=args.end_of_read_bonus
         )
         b_match.start_index += b_search_interval[0]
@@ -314,6 +314,7 @@ if __name__ == "__main__":
                 muscle_path=args.muscle_path,
                 e_value=args.e_value
             )
+            logger.info("Starting write-back.")
             solved.to_csv(primer_data.output_file_path)
 
             logger.info(f"Orf matching output has been written to {primer_data.output_file_path}")

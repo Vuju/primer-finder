@@ -6,7 +6,7 @@ def smith_waterman(
         gap = -2,
         gap3 = -2,
         substitution_function = (lambda p, r: 2 if (p == r) else -1),
-        end_of_read_bonus = True,
+        end_of_read_bonus = (True, True),
         end_of_read_bonus_value = 1
 ):
     """
@@ -19,11 +19,12 @@ def smith_waterman(
     :param substitution_function: The reward and penalty values from comparing two characters.
     Has to be a function that accepts two characters to compare and returns a numerical value.
     By default, it returns +2 for a match, -1 for a mismatch.
+    :param end_of_read_bonus: Tuple whether to give a bonus for a partial match at the beginning and end of read.
+    :param end_of_read_bonus_value: Value of bonus per missing base pair at the end of a read.
     :return max_score: the highest score in the final score-matrix
     :return aligned_primer:the primer sequence with potential skips
     :return aligned_read: the read sequence with potential skips
     :return alignment_start_index_in_read: the starting index of the alignment within the read
-
     """
     # construction
     rows = len(primer) + 3
@@ -37,7 +38,7 @@ def smith_waterman(
     max_pos = (0, 0)
 
     # for beginning (and end later), define a bonus to encourage matching partial primers
-    if end_of_read_bonus:
+    if end_of_read_bonus[0]:
         for i in range(2, rows):
             for j in range(0, 3):
                 score_matrix[i][j] = end_of_read_bonus_value * (i - 2)
@@ -63,7 +64,7 @@ def smith_waterman(
                 max_pos = (i, j)
 
     # for (beginning earlier and) end, define a bonus to encourage matching partial primers
-    if end_of_read_bonus:
+    if end_of_read_bonus[1]:
         last_column = cols - 1
         for i in range(3, rows):
             score_matrix[i][last_column] += max(0, end_of_read_bonus_value * (rows - i - 1))
