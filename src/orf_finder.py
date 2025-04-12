@@ -54,6 +54,7 @@ class OrfFinder:
         Takes a dataframe of sequences and attempts to solve all ambiguous orfs.
 
         :param df: The dataframe of all sequences.
+
         :return: all sequences with a definite or decided orf.
         """
         unsolved_results = df[~df['possible_orfs'].str.contains(r'\[\]')]
@@ -107,6 +108,7 @@ class OrfFinder:
         Takes a list of related sequences, aligns them with "muscle", and builds a HMM.
 
         :param reference_entries: Set of biologically related, but solved sequences.
+
         :return: An HMM constructed with an MSA of the input sequences.
         """
         amino_alphabet = pyhmmer.easel.Alphabet.amino()
