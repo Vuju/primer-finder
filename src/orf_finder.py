@@ -28,6 +28,10 @@ def list_possible_orf(sequence, translation_table):
 
 
 class OrfFinder:
+    """
+    Orf Finder is a class to solve ambiguous open reading frames.
+    Given a library of sequences, it can compare ambiguous sequences with certain and solved ones to choose the most likely true orf.
+    """
 
     progress_bar: tqdm
     def __init__(self,

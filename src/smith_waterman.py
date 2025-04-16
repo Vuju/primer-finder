@@ -1,5 +1,5 @@
-from src.config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
-from src.match_result import MatchResult
+from config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
+from match_result import MatchResult
 
 
 def default_substitution_function(letter_in_primer, letter_in_read) -> float:
@@ -25,6 +25,12 @@ def default_substitution_function(letter_in_primer, letter_in_read) -> float:
 
 
 class SmithWaterman:
+    """
+    This class instantiates an implementation of the Smith-Waterman algorithm.
+    Major changes are:
+     - There is a separate penalty for triplet gaps, reasoning being that a triplet gap doesn't shift the reading frame.
+     - There is an optional score bonus at the end of the dna sequence to accommodate for partial matches.
+    """
 
     def __init__(self,
         gap_penalty = GAP_PENALTY,
@@ -33,7 +39,7 @@ class SmithWaterman:
         sub_function = CUSTOM_SUBSTITUTION_FUNCTION
     ):
         """
-        A SmithWaterman instance. As many parameters will be kept
+        A configured SmithWaterman instance. As many parameters will be kept
         the same over many calls, they are to be set at construction time.
 
         :param gap_penalty: The penalty value for skipping a single nucleotide.
@@ -44,13 +50,20 @@ class SmithWaterman:
         Set to None for a default function.
         """
         # todo explore parameter space
-        self.gap = gap_penalty
-        self.gap3 = triplet_gap_penalty
+        self.gap_penalty = gap_penalty
+        self.triplet_gap_penalty = triplet_gap_penalty
         self.end_of_read_bonus_value = end_of_read_bonus_value
         self.substitution_function = sub_function or default_substitution_function
         self.match_value = self.substitution_function("A", "A")
 
     def align_partial(self, primer, super_sequence, search_interval):
+        """
+        Align the primer sequence to the super sequence. You can set a search interval within the super sequence.
+        :param primer: A primer sequence.
+        :param super_sequence: A (longer) DNA sequence.
+        :param search_interval: The search interval within the super sequence.
+        :return:
+        """
         match = self.align(
             primer_sequence=primer,
             dna_sequence=super_sequence[search_interval[0]:search_interval[1]],
@@ -99,10 +112,10 @@ class SmithWaterman:
             for j in range(3, cols):
                 # Calculate all possible scores
                 match_score = score_matrix[i - 1][j - 1] + (self.substitution_function(primer_sequence[i - 3], dna_sequence[j - 3]))
-                delete = score_matrix[i - 1][j] + self.gap
-                insert = score_matrix[i][j - 1] + self.gap
-                del3 = (score_matrix[i - 3][j] + self.gap3)
-                ins3 = (score_matrix[i][j - 3] + self.gap3)
+                delete = score_matrix[i - 1][j] + self.gap_penalty
+                insert = score_matrix[i][j - 1] + self.gap_penalty
+                del3 = (score_matrix[i - 3][j] + self.triplet_gap_penalty)
+                ins3 = (score_matrix[i][j - 3] + self.triplet_gap_penalty)
 
                 # Find maximum score and corresponding direction
                 scores = [0, match_score, delete, insert, del3, ins3]
