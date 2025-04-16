@@ -10,6 +10,9 @@ from Bio.Seq import Seq
 from pyhmmer.easel import TextSequence
 from tqdm import tqdm
 
+from src.config.constants import PROTEIN_TRANSLATION_TABLE, MUSCLE_PATH, E_VALUE, ORF_MATCHING_LOWER_THRESHOLD, \
+    ORF_MATCHING_UPPER_THRESHOLD
+
 logger = logging.getLogger(__name__)
 
 def list_possible_orf(sequence, translation_table):
@@ -28,11 +31,11 @@ class OrfFinder:
 
     progress_bar: tqdm
     def __init__(self,
-                 translation_table,
-                 muscle_path,
-                 e_value_threshold,
-                 lower_reference_threshold: int,
-                 upper_reference_threshold: int,
+                 translation_table = PROTEIN_TRANSLATION_TABLE,
+                 muscle_path = MUSCLE_PATH,
+                 e_value_threshold = E_VALUE,
+                 lower_reference_threshold: int = ORF_MATCHING_LOWER_THRESHOLD,
+                 upper_reference_threshold: int = ORF_MATCHING_UPPER_THRESHOLD,
     ):
         """
         an instance of the OrfFinder class. Parameters should be set on initialization.
@@ -45,9 +48,9 @@ class OrfFinder:
         """
         self.translation_table = translation_table
         self.muscle_path = muscle_path
-        self.e_value_threshold = e_value_threshold or 1000
-        self.lower_reference_threshold = lower_reference_threshold or 10
-        self.upper_reference_threshold = upper_reference_threshold or 50
+        self.e_value_threshold = e_value_threshold
+        self.lower_reference_threshold = lower_reference_threshold
+        self.upper_reference_threshold = upper_reference_threshold
 
     def solve_orfs_for_df(self, df: pd.DataFrame):
         """

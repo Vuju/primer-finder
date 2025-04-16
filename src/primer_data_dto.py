@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from src.primer_finder_regex import regex_builder
+
 
 @dataclass
 class PrimerDataDTO:
@@ -11,28 +13,31 @@ class PrimerDataDTO:
 
     distance: int
 
-    search_area: float
-    smith_waterman_score_cutoff: float
+    def __init__(
+            self,
+            forward_primer: str,
+            backward_primer: str,
+            distance: int,
+            forward_primer_regex: str = None,
+            backward_primer_regex: str = None,
+    ):
+        self.forward_primer = forward_primer
+        self.backward_primer = backward_primer
+        self.distance = distance
 
-    input_file_path: str
-    output_file_path: str
+        self.forward_primer_regex = forward_primer_regex or regex_builder(forward_primer)
+        self.backward_primer_regex = backward_primer_regex or regex_builder(backward_primer)
 
-    translation_table: Any
 
-def get_primer_dto_from_args(args, index):
-    out_path_split = args.output_file_path.rpartition(".")
-    out_path = "".join([out_path_split[0], f"-{index}.", out_path_split[2]])
-
+def primer_info_from_string(primer_info_string: str):
+    split = primer_info_string.split(",")
     return PrimerDataDTO(
-        forward_primer= args.primer_data[index]["f_primer"],
-        forward_primer_regex=args.primer_data[index]["f_primer_regex"],
-        backward_primer=args.primer_data[index]["b_primer"],
-        backward_primer_regex=args.primer_data[index]["b_primer_regex"],
-        distance=int(args.primer_data[index]["distance"]),
-        search_area=args.search_area,
-        smith_waterman_score_cutoff=args.smith_waterman_score_cutoff,
-        input_file_path=args.input_file_path,
-        output_file_path=out_path,
-        translation_table=args.protein_translation_table,
+        forward_primer=split[0].strip(),
+        backward_primer=split[1].strip(),
+        distance=int(split[2].strip()),
     )
+
+
+
+
 

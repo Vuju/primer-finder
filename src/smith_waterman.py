@@ -1,3 +1,4 @@
+from src.config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
 from src.match_result import MatchResult
 
 
@@ -25,22 +26,27 @@ def default_substitution_function(letter_in_primer, letter_in_read) -> float:
 
 class SmithWaterman:
 
-    def __init__(self, gap_penalty, triple_gap_penalty, end_of_read_bonus_value, sub_function):
+    def __init__(self,
+        gap_penalty = GAP_PENALTY,
+        triplet_gap_penalty = TRIPLET_GAP_PENALTY,
+        end_of_read_bonus_value = END_OF_READ_BONUS,
+        sub_function = CUSTOM_SUBSTITUTION_FUNCTION
+    ):
         """
         A SmithWaterman instance. As many parameters will be kept
         the same over many calls, they are to be set at construction time.
 
-        :param gap_penalty: The penalty value for skipping a single nucleotide. Default -2.
-        :param triple_gap_penalty: The penalty value for skipping a triplet. Default -2.
+        :param gap_penalty: The penalty value for skipping a single nucleotide.
+        :param triplet_gap_penalty: The penalty value for skipping a triplet.
         :param end_of_read_bonus_value: Value of bonus per missing base pair at the end of a read.
         :param sub_function: The reward and penalty values from comparing two characters.
         Has to be a function that accepts two characters to compare and returns a numerical value.
-        By default, it returns +2 for a match, -1 for a mismatch.
+        Set to None for a default function.
         """
         # todo explore parameter space
-        self.gap = gap_penalty or -2
-        self.gap3 = triple_gap_penalty or -2
-        self.end_of_read_bonus_value = end_of_read_bonus_value or 1
+        self.gap = gap_penalty
+        self.gap3 = triplet_gap_penalty
+        self.end_of_read_bonus_value = end_of_read_bonus_value
         self.substitution_function = sub_function or default_substitution_function
         self.match_value = self.substitution_function("A", "A")
 
