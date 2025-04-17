@@ -1,20 +1,17 @@
-import gzip
 import logging
-
 from functools import partial
 from multiprocessing import Pool, Lock
 
 from tqdm import tqdm
-from typing import TextIO
 
-from src.config.constants import INPUT_FILE_PATH, OUTPUT_FILE_PATH, \
-    PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNKSIZE, SEARCH_AREA, SMITH_WATERMAN_SCORE_CUTOFF, \
-    PROTEIN_TRANSLATION_TABLE
-from src.primer_matching.dtos.match_result_dto import MatchResultDTO
-from src.orf_finder import list_possible_orf
-from src.primer_matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
 from primer_finder_regex import *
 from smith_waterman import SmithWaterman
+from src.config.constants import PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNKSIZE, SEARCH_AREA, \
+    SMITH_WATERMAN_SCORE_CUTOFF, PROTEIN_TRANSLATION_TABLE
+from src.orf_finder import list_possible_orf
+from src.primer_matching.connectors.connector import Connector
+from src.primer_matching.dtos.match_result_dto import MatchResultDTO
+from src.primer_matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +25,8 @@ class PrimerFinder:
     A configured instance of PrimerFinder.
     """
     def __init__(self,
+                 connector: Connector,
                  smith_waterman: SmithWaterman = None,
-                 input_file: str = INPUT_FILE_PATH,
-                 output_file: str = OUTPUT_FILE_PATH,
                  primer_information_file: str = PRIMER_INFORMATION_PATH,
                  custom_num_threads: int = CUSTOM_NUM_THREADS,
                  chunk_size: int = CHUNKSIZE,
@@ -39,9 +35,9 @@ class PrimerFinder:
                  translation_table = PROTEIN_TRANSLATION_TABLE,
     ):
         self.primer_data = []
+
+        self.connector = connector
         self.smith_waterman = smith_waterman or SmithWaterman()
-        self.input_file = input_file
-        self.output_file = output_file
         self.primer_information_file = primer_information_file
         self.custom_num_threads = custom_num_threads
         self.chunk_size = chunk_size
@@ -54,25 +50,22 @@ class PrimerFinder:
         Executes the primer finder algorithm with the set configuration.
         """
         self._get_primer_information()
-        sequences = self._read_sequences()
+        sequences = self.connector.read_sequences()
         _lock = Lock()
 
         logger.info("Getting the number of sequences.")
-        _total_number_of_sequences = self._count_number_of_sequences()
-        with open(self.output_file, 'w') as output_file:
-            output_file.write(
-                "BOLD ID;Read ID;Country;Phylum;Class;Order;Family;Genus;Species;f_score;f_match;f_index;b_score;b_match;b_index;read;possible_orfs\n"
-            )
+        _total_number_of_sequences = self.connector.get_number_of_sequences()
+
         for i, primer_datum in enumerate(self.primer_data):
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=_total_number_of_sequences)
-            worker = partial(self.process_sequence, primer_datum)
+            worker = partial(self._process_sequence, primer_datum)
             with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(_lock,)) as pool:
                 for _ in pool.imap(worker, sequences, chunksize=self.chunk_size):
                     pbar.update(1)
             pbar.close()
 
-    def process_sequence(self, query: PrimerDataDTO, sequence_object):
+    def _process_sequence(self, query: PrimerDataDTO, sequence_object):
         _sequence_found = False
         _orf_calculated = 0
 
@@ -133,7 +126,7 @@ class PrimerFinder:
             possible_orfs = list_possible_orf(inter_primer_region, translation_table=self.translation_table)
             possible_orfs = ([]) if len(possible_orfs) == 0 else possible_orfs
 
-            self._write_output_to_file(sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs)
+            self.connector.write_output(sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs)
 
     def _get_primer_information(self):
         with open(self.primer_information_file, "r") as primer_info_file:
@@ -149,53 +142,4 @@ class PrimerFinder:
             score = len(primer) * self.smith_waterman.match_value
             read_match = read[index:end_index]
         return MatchResultDTO(score, read_match, index, end_index)
-
-    def _count_number_of_sequences(self):
-        count = 0
-        file: TextIO
-        if self.input_file.endswith('.gz'):
-            file = gzip.open(self.input_file, 'rt')
-        else:
-            file = open(self.input_file, 'r', encoding="UTF-8")
-        for line in file.readlines():
-            if line.startswith('>'):
-                count += 1
-        file.close()
-        return count
-
-    # todo: externalize
-    def _read_sequences(self):
-        file: TextIO
-        if self.input_file.endswith('.gz'):
-            file = gzip.open(self.input_file, 'rt')
-        else:
-            file = open(self.input_file, 'r', encoding="UTF-8")
-
-        while True:
-            metadata_line = file.readline()
-            sequence_lines = file.readline()
-            if not metadata_line or not sequence_lines:
-                break
-            while True:
-                pos = file.tell()
-                line_next = file.readline()
-                if not line_next:
-                    break
-                if line_next.strip() == "":
-                    break
-                if line_next.startswith('>'):
-                    file.seek(pos)
-                    break
-                else:
-                    sequence_lines += line_next.strip()
-
-            yield metadata_line, sequence_lines
-
-    # todo: externalize
-    def _write_output_to_file(self, read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf):
-        with lock, open(self.output_file, 'a') as out_file:
-            out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip()
-                           + f"{forward_match.score};{forward_match.read};{forward_match.start_index};"
-                           + f"{backward_match.score};{backward_match.read};{backward_match.start_index};"
-                           + f"{inter_primer_sequence};{str(possible_orf)}\n")
 
