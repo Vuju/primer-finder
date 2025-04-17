@@ -1,7 +1,6 @@
 from dataclasses import dataclass
-from typing import Any
 
-from src.primer_finder_regex import regex_builder
+from src.primer_matching.primer_finder_regex import regex_builder
 
 
 @dataclass

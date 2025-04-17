@@ -1,12 +1,19 @@
 from dataclasses import dataclass
 
 @dataclass
-class MatchResult:
+class MatchResultDTO:
+    """
+    A dataclass representing a match result.
+    """
     score: float = 0.0
     read: str = ''
     start_index: int = -1
     end_index: int = -1
 
     def is_mismatch(self):
+        """
+        Checks if the match result is mismatch.
+        :return: Boolean whether the match result is mismatch.
+        """
         return True if self.start_index == -1 else False
 

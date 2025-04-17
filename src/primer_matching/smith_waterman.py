@@ -1,5 +1,5 @@
-from config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
-from match_result import MatchResult
+from src.config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
+from src.primer_matching.dtos.match_result_dto import MatchResultDTO
 
 
 def default_substitution_function(letter_in_primer, letter_in_read) -> float:
@@ -79,7 +79,7 @@ class SmithWaterman:
             primer_sequence,
             dna_sequence,
             are_ends_eligible_for_bonus
-    ) -> MatchResult:
+    ) -> MatchResultDTO:
         """
         An implementation of the Smith-Waterman algorithm for local sequence alignment.
         Extended with the functionality to jump triplets.
@@ -180,4 +180,4 @@ class SmithWaterman:
         # Since their alignment worked otherwise, I set the index to min 0. Maybe their score is also off by 1 but who cares.
         alignment_start_index_in_read = max(0, j - 2)
 
-        return MatchResult(max_score, aligned_read, alignment_start_index_in_read, alignment_start_index_in_read + len(aligned_read))
+        return MatchResultDTO(max_score, aligned_read, alignment_start_index_in_read, alignment_start_index_in_read + len(aligned_read))

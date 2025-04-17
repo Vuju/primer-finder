@@ -7,12 +7,12 @@ from multiprocessing import Pool, Lock
 from tqdm import tqdm
 from typing import TextIO
 
-from config.constants import INPUT_FILE_PATH, OUTPUT_FILE_PATH, \
+from src.config.constants import INPUT_FILE_PATH, OUTPUT_FILE_PATH, \
     PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNKSIZE, SEARCH_AREA, SMITH_WATERMAN_SCORE_CUTOFF, \
     PROTEIN_TRANSLATION_TABLE
-from match_result import MatchResult
-from orf_finder import list_possible_orf
-from primer_data_dto import PrimerDataDTO, primer_info_from_string
+from src.primer_matching.dtos.match_result_dto import MatchResultDTO
+from src.orf_finder import list_possible_orf
+from src.primer_matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
 from primer_finder_regex import *
 from smith_waterman import SmithWaterman
 
@@ -148,7 +148,7 @@ class PrimerFinder:
         if index != -1:
             score = len(primer) * self.smith_waterman.match_value
             read_match = read[index:end_index]
-        return MatchResult(score, read_match, index, end_index)
+        return MatchResultDTO(score, read_match, index, end_index)
 
     def _count_number_of_sequences(self):
         count = 0

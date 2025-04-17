@@ -1,6 +1,11 @@
 import re
 
 def regex_builder(initialString):
+    """
+    Converts a sequence in nucleic acid notation into a regular expression for DNA, by replacing e.g. "W" with "[AT]".
+    :param initialString: A sequence in nucleic acid notation.
+    :return:
+    """
     regexString = ""
     for char in initialString:
         match char:
@@ -43,6 +48,13 @@ def regex_builder(initialString):
 
 
 def find_exact_match(regex, read):
+    """
+    A capsule function for re.search().span().
+    Will return -1, -1 instead of None though.
+    :param regex: The regex pattern to use.
+    :param read: The string to search in.
+    :return:
+    """
     match = re.search(regex, read)
     if match is not None:
         start_index, end_index = match.span()

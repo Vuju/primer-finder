@@ -16,6 +16,12 @@ from src.config.constants import PROTEIN_TRANSLATION_TABLE, MUSCLE_PATH, E_VALUE
 logger = logging.getLogger(__name__)
 
 def list_possible_orf(sequence, translation_table):
+    """
+    A function to determine all reading frames of a sequence, which do not contain a stop codon.
+    :param sequence: The sequence to analyze.
+    :param translation_table: The translation table for DNA to amino acid.
+    :return: returns a List containing 0, 1 and/or 2 as elements, indicating the offset from the start of the sequence as open reading frames.
+    """
     dna = Seq(sequence)
     orf_list = []
     for frame in range(3):
@@ -32,7 +38,6 @@ class OrfFinder:
     Orf Finder is a class to solve ambiguous open reading frames.
     Given a library of sequences, it can compare ambiguous sequences with certain and solved ones to choose the most likely true orf.
     """
-
     progress_bar: tqdm
     def __init__(self,
                  translation_table = PROTEIN_TRANSLATION_TABLE,

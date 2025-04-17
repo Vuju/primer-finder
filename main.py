@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 
 from src.config.constants import LOG_PATH, LOG_LEVEL, PRIMER_FINDER, ORF_FINDER, OUTPUT_FILE_PATH
-from src.primer_finder import PrimerFinder
+from src.primer_matching.primer_finder import PrimerFinder
 from src.orf_finder import OrfFinder
 
 logger = logging.getLogger(__name__)
