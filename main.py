@@ -2,7 +2,8 @@ import logging
 
 import pandas as pd
 
-from src.config.constants import LOG_PATH, LOG_LEVEL, PRIMER_FINDER, ORF_FINDER, OUTPUT_FILE_PATH
+from src.config.constants import LOG_PATH, LOG_LEVEL, PRIMER_FINDER, ORF_FINDER, OUTPUT_FILE_PATH, INPUT_FILE_PATH
+from src.primer_matching.connectors.file_connector import FileConnector
 from src.primer_matching.primer_finder import PrimerFinder
 from src.orf_finder import OrfFinder
 
@@ -16,7 +17,10 @@ if __name__ == "__main__":
     # todo: extract read and write functionality from primer finder
 
     if PRIMER_FINDER:
-        primer_finder = PrimerFinder()
+        # def connector dynamically
+        # def lock
+        connector = FileConnector(lock=lock,input_file=INPUT_FILE_PATH,output_file=OUTPUT_FILE_PATH)
+        primer_finder = PrimerFinder(connector=connector)
         primer_finder.find_all_primers()
         logger.info(f"Primer Finder output has been written to {OUTPUT_FILE_PATH}")
 
