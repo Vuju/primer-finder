@@ -2,7 +2,7 @@ import os
 import sqlite3
 from typing import Generator, Tuple, Any
 
-from src.primer_matching.connectors.connector import Connector
+from primer_finder.matching.connectors.base import Connector
 
 
 class DbConnector(Connector):

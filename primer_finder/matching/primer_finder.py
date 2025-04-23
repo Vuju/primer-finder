@@ -4,14 +4,14 @@ from multiprocessing import Pool, Lock
 
 from tqdm import tqdm
 
-from primer_finder_regex import *
+from regex import find_exact_match
 from smith_waterman import SmithWaterman
-from src.config.constants import PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNKSIZE, SEARCH_AREA, \
+from primer_finder.config.constants import PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNKSIZE, SEARCH_AREA, \
     SMITH_WATERMAN_SCORE_CUTOFF, PROTEIN_TRANSLATION_TABLE
-from src.orf_finder import list_possible_orf
-from src.primer_matching.connectors.connector import Connector
-from src.primer_matching.dtos.match_result_dto import MatchResultDTO
-from src.primer_matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
+from primer_finder.orf.finder import list_possible_orf
+from primer_finder.matching.connectors.base import Connector
+from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
+from primer_finder.matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
 
 logger = logging.getLogger(__name__)
 

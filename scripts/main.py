@@ -2,10 +2,10 @@ import logging
 
 import pandas as pd
 
-from src.config.constants import LOG_PATH, LOG_LEVEL, PRIMER_FINDER, ORF_FINDER, OUTPUT_FILE_PATH, INPUT_FILE_PATH
-from src.primer_matching.connectors.file_connector import FileConnector
-from src.primer_matching.primer_finder import PrimerFinder
-from src.orf_finder import OrfFinder
+from primer_finder.config.constants import LOG_PATH, LOG_LEVEL, PRIMER_FINDER, ORF_FINDER, OUTPUT_FILE_PATH, INPUT_FILE_PATH
+from primer_finder.matching.connectors.file_connector import FileConnector
+from primer_finder.matching.primer_finder import PrimerFinder
+from primer_finder.orf.decider import OrfDecider
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
         # before, this was handled by having different files. Will be more strange for db.
     if ORF_FINDER:
         logger.info(f"Starting orf-matching process.")
-        orf_finder = OrfFinder()
+        orf_finder = OrfDecider()
         all_entries = pd.read_csv(OUTPUT_FILE_PATH, sep=";")
         solved = orf_finder.solve_orfs_for_df(df=all_entries)
         logger.info("Starting write-back.")

@@ -1,7 +1,7 @@
 import logging
 
 ## File paths
-PRIMER_INFORMATION_PATH = "./src/config/primer_information.csv"
+PRIMER_INFORMATION_PATH = "./primer_finder/config/primer_information.csv"
 MUSCLE_PATH = "/mnt/c/Users/JulianVu/bin/muscle"
 INPUT_FILE_PATH = "./data/DB.COX1.mini.fna"
 OUTPUT_FILE_PATH = "./data/primer-finder-result.csv"

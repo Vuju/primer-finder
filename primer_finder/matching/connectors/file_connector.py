@@ -1,7 +1,7 @@
 import gzip
 from typing import TextIO
 
-from src.primer_matching.connectors.connector import Connector
+from primer_finder.matching.connectors.base import Connector
 
 
 class FileConnector(Connector):

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from src.primer_matching.primer_finder_regex import regex_builder
+from primer_finder.matching.regex import regex_builder
 
 
 @dataclass

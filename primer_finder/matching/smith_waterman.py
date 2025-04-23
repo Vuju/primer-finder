@@ -1,5 +1,5 @@
-from src.config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
-from src.primer_matching.dtos.match_result_dto import MatchResultDTO
+from primer_finder.config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
+from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
 
 def default_substitution_function(letter_in_primer, letter_in_read) -> float:
