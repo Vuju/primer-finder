@@ -1,0 +1,105 @@
+[build-system]
+requires = ["hatchling>=1.0.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "primer-finder"
+version = "0.1.0"
+description = "A tool for finding primers in genetic sequences and analyzing open reading frames"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Julian Siemer", email = "julian@vu-online.de"},
+]
+maintainers = [
+    {name = "Julian Siemer", email = "julian@vu-online.de"},
+]
+keywords = ["bioinformatics", "primers", "orf", "genetics", "dna"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "tqdm",
+    "pyhmmer",
+    "biopython",
+    "pandas",
+    "muscle",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+    "ruff>=0.0.270",
+]
+docs = [
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.2.0",
+    "myst-parser>=2.0.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/vuju/primer-finder"
+"Bug Tracker" = "https://github.com/vuju/primer-finder/issues"
+"Documentation" = "(No Documentation page)"
+"Source Code" = "https://github.com/vuju/primer-finder"
+
+[project.scripts]
+primer-finder = "primer_finder.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["primer_finder"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "--cov=primer_finder"
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+select = ["E", "F", "B", "I", "N", "UP", "ANN", "C4", "SIM", "ARG"]
+ignore = ["ANN101", "ANN102"]
+
+[tool.coverage.run]
+source = ["primer_finder"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
