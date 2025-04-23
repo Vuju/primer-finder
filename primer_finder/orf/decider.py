@@ -10,8 +10,7 @@ from Bio.Seq import Seq
 from pyhmmer.easel import TextSequence
 from tqdm import tqdm
 
-from primer_finder.config.constants import PROTEIN_TRANSLATION_TABLE, MUSCLE_PATH, E_VALUE, ORF_MATCHING_LOWER_THRESHOLD, \
-    ORF_MATCHING_UPPER_THRESHOLD
+from primer_finder.config.config_loader import get_config_loader
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +22,11 @@ class OrfDecider:
     """
     progress_bar: tqdm
     def __init__(self,
-                 translation_table = PROTEIN_TRANSLATION_TABLE,
-                 muscle_path = MUSCLE_PATH,
-                 e_value_threshold = E_VALUE,
-                 lower_reference_threshold: int = ORF_MATCHING_LOWER_THRESHOLD,
-                 upper_reference_threshold: int = ORF_MATCHING_UPPER_THRESHOLD,
+                 translation_table = None,
+                 muscle_path = None,
+                 e_value_threshold = None,
+                 lower_reference_threshold: int = None,
+                 upper_reference_threshold: int = None,
     ):
         """
         an instance of the OrfFinder class. Parameters should be set on initialization.
@@ -38,11 +37,13 @@ class OrfDecider:
         :param lower_reference_threshold: Defines the least number of sequences necessary to build an HMM.
         :param upper_reference_threshold: Defines the upper limit for the number of sequences used to build an HMM.
         """
-        self.translation_table = translation_table
-        self.muscle_path = muscle_path
-        self.e_value_threshold = e_value_threshold
-        self.lower_reference_threshold = lower_reference_threshold
-        self.upper_reference_threshold = upper_reference_threshold
+        config = get_config_loader().get_config()
+
+        self.muscle_path = muscle_path or config["paths"]["muscle"]
+        self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
+        self.e_value_threshold = e_value_threshold or config["algorithm"]["e_value"]
+        self.lower_reference_threshold = lower_reference_threshold or config["algorithm"]["orf_matching_lower_threshold"]
+        self.upper_reference_threshold = upper_reference_threshold or config["algorithm"]["orf_matching_upper_threshold"]
 
     def solve_orfs_for_df(self, df: pd.DataFrame):
         """

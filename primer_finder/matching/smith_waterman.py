@@ -1,4 +1,4 @@
-from primer_finder.config.constants import CUSTOM_SUBSTITUTION_FUNCTION, END_OF_READ_BONUS, TRIPLET_GAP_PENALTY, GAP_PENALTY
+from primer_finder.config.config_loader import get_config_loader
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
 
@@ -33,10 +33,10 @@ class SmithWaterman:
     """
 
     def __init__(self,
-        gap_penalty = GAP_PENALTY,
-        triplet_gap_penalty = TRIPLET_GAP_PENALTY,
-        end_of_read_bonus_value = END_OF_READ_BONUS,
-        sub_function = CUSTOM_SUBSTITUTION_FUNCTION
+        gap_penalty = None,
+        triplet_gap_penalty = None,
+        end_of_read_bonus_value = None,
+        sub_function = None
     ):
         """
         A configured SmithWaterman instance. As many parameters will be kept
@@ -50,9 +50,12 @@ class SmithWaterman:
         Set to None for a default function.
         """
         # todo explore parameter space
-        self.gap_penalty = gap_penalty
-        self.triplet_gap_penalty = triplet_gap_penalty
-        self.end_of_read_bonus_value = end_of_read_bonus_value
+        config = get_config_loader().get_config()
+
+        self.gap_penalty = gap_penalty if gap_penalty is not None else config["algorithm"]["gap_penalty"]
+        self.triplet_gap_penalty = triplet_gap_penalty if triplet_gap_penalty is not None else config["algorithm"]["triplet_gap_penalty"]
+        self.end_of_read_bonus_value = end_of_read_bonus_value if end_of_read_bonus_value is not None else config["algorithm"]["end_of_read_bonus"]
+
         self.substitution_function = sub_function or default_substitution_function
         self.match_value = self.substitution_function("A", "A")
 

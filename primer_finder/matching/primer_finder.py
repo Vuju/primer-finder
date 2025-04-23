@@ -4,8 +4,7 @@ from multiprocessing import Pool, Lock
 
 from tqdm import tqdm
 
-from primer_finder.config.constants import PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNK_SIZE, SEARCH_AREA, \
-    SMITH_WATERMAN_SCORE_CUTOFF, PROTEIN_TRANSLATION_TABLE
+from primer_finder.config.config_loader import get_config_loader
 from primer_finder.orf.finder import list_possible_orf
 from primer_finder.matching.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
@@ -27,22 +26,24 @@ class PrimerFinder:
     def __init__(self,
                  connector: Connector,
                  smith_waterman: SmithWaterman = None,
-                 primer_information_file: str = PRIMER_INFORMATION_PATH,
-                 custom_num_threads: int = CUSTOM_NUM_THREADS,
-                 chunk_size: int = CHUNK_SIZE,
-                 search_area: float = SEARCH_AREA,
-                 smith_waterman_score_cutoff: float = SMITH_WATERMAN_SCORE_CUTOFF,
-                 translation_table = PROTEIN_TRANSLATION_TABLE,
+                 primer_information_file: str = None,
+                 custom_num_threads: int = None,
+                 chunk_size: int = None,
+                 search_area: float = None,
+                 smith_waterman_score_cutoff: float = None,
+                 translation_table = None,
                  ):
+        config = get_config_loader().get_config()
+
+        self.primer_information_file = primer_information_file or config["paths"]["primer_information"]
+        self.custom_num_threads = custom_num_threads or config["parallelization"]["num_threads"]
+        self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
+        self.search_area = search_area or config["algorithm"]["search_area"]
+        self.smith_waterman_score_cutoff = smith_waterman_score_cutoff or config["algorithm"]["smith_waterman_score_cutoff"]
+        self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
         self.primer_data = []
         self.connector = connector
         self.smith_waterman = smith_waterman or SmithWaterman()
-        self.primer_information_file = primer_information_file
-        self.custom_num_threads = custom_num_threads
-        self.chunk_size = chunk_size
-        self.search_area = search_area
-        self.smith_waterman_score_cutoff = smith_waterman_score_cutoff
-        self.translation_table = translation_table
 
     def find_all_primers(self):
         """
@@ -50,7 +51,7 @@ class PrimerFinder:
         """
         self._get_primer_information()
         sequences = self.connector.read_sequences()
-        lock = Lock()
+        _lock = Lock()
 
         logger.info("Getting the number of sequences.")
         _total_number_of_sequences = self.connector.get_number_of_sequences()
@@ -59,7 +60,7 @@ class PrimerFinder:
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=_total_number_of_sequences)
             worker = partial(self._process_sequence, primer_datum)
-            with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(lock,)) as pool:
+            with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(_lock,)) as pool:
                 for _ in pool.imap(worker, sequences, chunksize=self.chunk_size):
                     pbar.update(1)
             pbar.close()
@@ -141,4 +142,3 @@ class PrimerFinder:
             score = len(primer) * self.smith_waterman.match_value
             read_match = read[index:end_index]
         return MatchResultDTO(score, read_match, index, end_index)
-

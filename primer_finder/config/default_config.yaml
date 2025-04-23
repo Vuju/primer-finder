@@ -1,0 +1,49 @@
+# Default configuration for primer-finder
+
+# File paths
+paths:
+  primer_information: "./primer_finder/config/primer_information.csv"
+  muscle: "/mnt/c/Users/Julian/bin/muscle"
+  input_file: "./data/DB.COX1.mini.fna"
+  output_file: "./data/primer-finder-result-mini.csv"
+  log_file: "primer-finder_log.log"
+
+# Logger settings
+logging:
+  level: 20  # INFO level (corresponds to logging.INFO)
+
+# Feature toggles
+features:
+  primer_finder: true
+  orf_finder: true
+
+# Algorithm parameters
+algorithm:
+  # Limit the area to search for a second primer, when the first was found.
+  # Percentage of the distance between the primers.
+  search_area: 0.2
+  
+  # Percentage of maximum score. If a match is better,
+  # The search area for the other primer will be limited.
+  smith_waterman_score_cutoff: 0.8
+  
+  # Values for Smith-Waterman Scoring
+  gap_penalty: -2
+  triplet_gap_penalty: -2
+  end_of_read_bonus: 1
+  
+  # Limit the number of sequences that a possible orf will be compared to.
+  orf_matching_lower_threshold: 10
+  orf_matching_upper_threshold: 50
+  
+  # Protein translation table for "Bio.Seq.translate". Can be an NCBI index or name.
+  protein_translation_table: 5
+  
+  # E-value for BLAST searches
+  e_value: 1000
+
+# Parallelization settings
+parallelization:
+  # Set to null to select the maximum number for your cpu.
+  num_threads: null
+  chunk_size: 100
