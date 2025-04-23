@@ -1,20 +1,23 @@
 # Primer Finder
 
-A Python tool for efficient primer sequence identification in DNA reads using both regex pattern matching and Smith-Waterman alignment algorithms.
+A Python tool for efficient primer sequence identification in DNA reads using both regex pattern matching and Smith-Waterman alignment algorithms, with advanced ORF (Open Reading Frame) detection capabilities.
 
 ## Overview
 
-Primer Finder locates forward and reverse primer sequences within DNA reads. It first attempts to find exact matches using regex patterns, then falls back to Smith-Waterman algorithm for more flexible matching when necessary. The tool is optimized with multiprocessing for handling large datasets.
+Primer Finder locates forward and reverse primer sequences within DNA reads. It first attempts to find exact matches using regex patterns, then falls back to Smith-Waterman algorithm for more flexible matching when necessary. The tool is optimized with multiprocessing for handling large datasets and includes sophisticated ORF detection using Hidden Markov Models.
 
 ## Features
 
 - Fast exact matching using regex patterns
 - Sensitive matching with Smith-Waterman alignment algorithm
 - Expected distance constraints between primer pairs
-- Configurable search parameters
+- Advanced ORF detection using Hidden Markov Models
+- Taxonomic-based ORF resolution
+- Configuration-based architecture with YAML support
+- Environment variable overrides for configuration
 - Multiprocessing support for improved performance
 - Handles compressed (gzip) and uncompressed input files
-- *NEW* ORF finder Module: will figure out the best orf by querying possible orfs against a HMM
+- Comprehensive logging system
 
 ## Installation
 
@@ -30,37 +33,71 @@ Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-To use the orf-finder module, you will also need **"muscle"** for MSA. Please use a version of 5.X with parameter names "-align" and "-output".
+
+To use the ORF finder module, you will also need **"muscle"** for Multiple Sequence Alignment (MSA). Please use a version of 5.X with parameter names "-align" and "-output".
 
 ## Usage
 
-Run the script with default parameters:
+### Run as script
+Run the tool with default configuration:
 
 ```bash
-python primer_finder.py
+python -m primer_finder.cli
+```
+### Install
+Or install it like so:
+```bash
+pip install -e .
+
+# now you can run it everywhere more easily with
+primer-finder
 ```
 
-Or customize with command-line arguments:
+You can specify which components to run:
 
 ```bash
-python primer_finder.py --input_file_path ./data/my_sequences.fna --primer_information ./data/my_primers.csv
+# Run only primer finding
+primer-finder --find-primers
+# Or, as an example without installation:
+python -m primer_finder.cli --find-primers
+
+# Run only ORF detection
+primer-finder --find-orfs
+
+# Run both
+primer-finder --find-primers --find-orfs
 ```
 
-### Command-line Arguments
-| Argument                         | Default | Description |
-|----------------------------------|---------|-------------|
-| `--primer_finder`                | True | Flag as false to disable the primer-searching algorithm. |
-| `--orf_matching`                 | True | Flag as false to disable the orf-decision algorithm. |
-| `--search_area`                  | 0.2 | Determines how much extra area the algorithm will search if the other primer has already been found with enough certainty (set by '--sw_cutoff'). |
-| `--smith_waterman_score_cutoff`  | 0.8 | Smith-Waterman score cutoff for accepting a match. |
-| `--primer_information`           | ./data/primer-information.csv | CSV list of forward and reverse primer sequences, with expected distances. |
-| `--muscle_path`                  | /mnt/c/Users/Me/bin/muscle | Path to the muscle binary/executable. Runs with version 5.3, using 'muscle_path -align tmp_in.fasta -out tmp_out.fasta'. |
-| `--input_file_path`              | ./data/DB.COX1.fna | Path to input sequence file. |
-| `--output_file_path`             | ./data/primer-finder-result.csv | Path to output results file. |
-| `--orf_matching_threshold`       | 10 | Minimum number of similar sequences required to match an orf. |
-| `--orf_matching_upper_threshold` | 50 | Limit of similar sequences used to match an orf. |
-| `--protein_translation_table`    | 5 | Translation table for Bio.Seq translate(). This is used in orf_finder. |
-| `--num_threads`                  | None | Number of threads to use for processing. |
+Specify input and output files:
+
+```bash
+primer-finder --find-primers --input path/to/input.fna --output path/to/output.csv
+```
+
+## Configuration
+
+Primer Finder uses a configuration system based on YAML files. The default configuration is located at `primer_finder/config/default_config.yaml`.
+
+### Configuration Sections
+
+- **paths**: File paths for input, output, primer information, etc.
+- **logging**: Logging settings
+- **features**: Feature toggles for primer finder and ORF finder
+- **algorithm**: Algorithm parameters
+- **parallelization**: Settings for parallel processing
+
+### Environment Variable Overrides
+
+You can override configuration values using environment variables with the prefix `PRIMER_FINDER_`. For example:
+
+```bash
+# Override input file path
+export PRIMER_FINDER_PATHS__INPUT_FILE="./data/my_sequences.fna"
+
+# Override number of threads
+export PRIMER_FINDER_PARALLELIZATION__NUM_THREADS=4
+```
+
 ## Input Format
 
 ### Primer Information CSV
@@ -79,39 +116,51 @@ CCAGAGATTAGAGGGAACTGGATGA,GGGACGGTAAATCATTCAATATTATC,475
 
 ### Sequence File
 
-The tool supports FASTA format files and can handle both single-line and multi-line sequence entries.
+The tool supports FASTA format files and can handle both single-line and multi-line sequence entries. Both compressed (.gz) and uncompressed files are supported.
 
 ## Output
 
 The output is a CSV file containing:
-- Sequence metadata
+- Sequence metadata (BOLD ID, Read ID, taxonomic information)
 - Forward primer match details (score, matched sequence, position)
 - Reverse primer match details
-- Full read sequence
+- Inter-primer sequence
+- Possible ORFs
+- Single, most likely ORF (when ORF finder is used)
 
-## Processing pipeline:
-  1. Parse input arguments
-  2. Load primer information
-  3. Process each primer pair against all reads
-  4. For each read:
-     * Primer finder module
-       * Try exact matching via regex
-       * If needed, apply Smith-Waterman alignment
-       * Record results
-     * orf finder module
-       * Find all trivial ORFs
-       * Define Reference Groups
-         * MSA with muscle
-         * build a HMM
-         * query non-trivial orfs against a suitable HMM
+## Architecture
+
+### Primer Finder Module
+
+The primer finder module locates primer sequences within DNA reads:
+1. Attempts exact matching using regex patterns
+2. Falls back to Smith-Waterman algorithm for approximate matching
+3. Uses expected distances between primer pairs to optimize search space
+4. Extracts the inter-primer region for ORF analysis
+
+### ORF Finder Module
+
+The ORF finder module identifies and resolves ambiguous open reading frames:
+1. Identifies all possible ORFs in the inter-primer region
+2. Groups sequences by taxonomic levels (Species, Genus, Family, Order, Class)
+3. Builds Hidden Markov Models (HMMs) from solved sequences
+4. Queries ambiguous sequences against the HMMs to determine the most likely ORF
+5. Uses MUSCLE for multiple sequence alignment
+
+### Connectors
+
+The system uses a connector architecture to handle different input/output sources:
+- FileConnector: Handles file-based input/output
+- Other connectors can be implemented by extending the base Connector class
 
 ## Performance Optimization
 
 - Multiprocessing with process pools
+- Configurable chunk size for parallel processing
 - Search space reduction based on expected primer distances
 - Regex-first approach before using more expensive alignment algorithms
+- Taxonomic-based grouping for efficient ORF resolution
 
 ## License
 
-(I didn't think about licensing yet)
-
+MIT-Licence

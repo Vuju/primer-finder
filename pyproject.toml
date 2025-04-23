@@ -55,7 +55,6 @@ docs = [
 [project.urls]
 "Homepage" = "https://github.com/vuju/primer-finder"
 "Bug Tracker" = "https://github.com/vuju/primer-finder/issues"
-"Documentation" = "(No Documentation page)"
 "Source Code" = "https://github.com/vuju/primer-finder"
 
 [project.scripts]

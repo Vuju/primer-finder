@@ -14,8 +14,8 @@ logging:
 
 # Feature toggles
 features:
-  primer_finder: true
-  orf_finder: true
+  primer_finder: false
+  orf_finder: false
 
 # Algorithm parameters
 algorithm:

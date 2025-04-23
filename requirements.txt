@@ -1,7 +1,8 @@
 # External dependencies
-tqdm
-pyhmmer
-biopython
-pandas
+tqdm~=4.67.1
+pyhmmer~=0.11.0
+biopython~=1.85
+pandas~=2.2.3
 muscle
-numpy
+numpy~=2.2.4
+PyYAML~=6.0.2
