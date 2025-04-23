@@ -1,4 +1,5 @@
 import gzip
+from multiprocessing import Lock
 from typing import TextIO
 
 from primer_finder.matching.connectors.base import Connector
@@ -6,8 +7,7 @@ from primer_finder.matching.connectors.base import Connector
 
 class FileConnector(Connector):
 
-    def __init__(self, lock, input_file, output_file,):
-        self.lock = lock
+    def __init__(self, input_file, output_file,):
         self.input_file = input_file
         self.output_file = output_file
         self.length = -1
@@ -61,8 +61,8 @@ class FileConnector(Connector):
 
             yield metadata_line, sequence_lines
 
-    def write_output(self, read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf):
-        with self.lock, open(self.output_file, 'a') as out_file:
+    def write_output(self, lock: Lock, read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf):
+        with lock, open(self.output_file, 'a') as out_file:
             out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip()
                            + f"{forward_match.score};{forward_match.read};{forward_match.start_index};"
                            + f"{backward_match.score};{backward_match.read};{backward_match.start_index};"

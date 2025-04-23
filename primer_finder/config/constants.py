@@ -2,16 +2,16 @@ import logging
 
 ## File paths
 PRIMER_INFORMATION_PATH = "./primer_finder/config/primer_information.csv"
-MUSCLE_PATH = "/mnt/c/Users/JulianVu/bin/muscle"
+MUSCLE_PATH = "/mnt/c/Users/Julian/bin/muscle"
 INPUT_FILE_PATH = "./data/DB.COX1.mini.fna"
-OUTPUT_FILE_PATH = "./data/primer-finder-result.csv"
+OUTPUT_FILE_PATH = "./data/primer-finder-result-mini.csv"
 
 # Logger settings
 LOG_PATH = "primer-finder_log.log"
 LOG_LEVEL = logging.INFO
 
 # Toggle major functionality on or off.
-PRIMER_FINDER = False
+PRIMER_FINDER = True
 ORF_FINDER = True
 
 ## Define parameters for primer-finder
@@ -40,6 +40,6 @@ PROTEIN_TRANSLATION_TABLE = 5
 ## parallelization settings
 # Set to "None" to select the maximum number for your cpu.
 CUSTOM_NUM_THREADS = None
-CHUNKSIZE = 100
+CHUNK_SIZE = 100
 
 E_VALUE = 1000

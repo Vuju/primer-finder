@@ -4,14 +4,14 @@ from multiprocessing import Pool, Lock
 
 from tqdm import tqdm
 
-from regex import find_exact_match
-from smith_waterman import SmithWaterman
-from primer_finder.config.constants import PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNKSIZE, SEARCH_AREA, \
+from primer_finder.config.constants import PRIMER_INFORMATION_PATH, CUSTOM_NUM_THREADS, CHUNK_SIZE, SEARCH_AREA, \
     SMITH_WATERMAN_SCORE_CUTOFF, PROTEIN_TRANSLATION_TABLE
 from primer_finder.orf.finder import list_possible_orf
 from primer_finder.matching.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 from primer_finder.matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
+from primer_finder.matching.regex import find_exact_match
+from primer_finder.matching.smith_waterman import SmithWaterman
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,12 @@ class PrimerFinder:
                  smith_waterman: SmithWaterman = None,
                  primer_information_file: str = PRIMER_INFORMATION_PATH,
                  custom_num_threads: int = CUSTOM_NUM_THREADS,
-                 chunk_size: int = CHUNKSIZE,
+                 chunk_size: int = CHUNK_SIZE,
                  search_area: float = SEARCH_AREA,
                  smith_waterman_score_cutoff: float = SMITH_WATERMAN_SCORE_CUTOFF,
                  translation_table = PROTEIN_TRANSLATION_TABLE,
-    ):
+                 ):
         self.primer_data = []
-
         self.connector = connector
         self.smith_waterman = smith_waterman or SmithWaterman()
         self.primer_information_file = primer_information_file
@@ -51,7 +50,7 @@ class PrimerFinder:
         """
         self._get_primer_information()
         sequences = self.connector.read_sequences()
-        _lock = Lock()
+        lock = Lock()
 
         logger.info("Getting the number of sequences.")
         _total_number_of_sequences = self.connector.get_number_of_sequences()
@@ -60,7 +59,7 @@ class PrimerFinder:
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=_total_number_of_sequences)
             worker = partial(self._process_sequence, primer_datum)
-            with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(_lock,)) as pool:
+            with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(lock,)) as pool:
                 for _ in pool.imap(worker, sequences, chunksize=self.chunk_size):
                     pbar.update(1)
             pbar.close()
@@ -126,7 +125,7 @@ class PrimerFinder:
             possible_orfs = list_possible_orf(inter_primer_region, translation_table=self.translation_table)
             possible_orfs = ([]) if len(possible_orfs) == 0 else possible_orfs
 
-            self.connector.write_output(sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs)
+            self.connector.write_output(lock, sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs)
 
     def _get_primer_information(self):
         with open(self.primer_information_file, "r") as primer_info_file:

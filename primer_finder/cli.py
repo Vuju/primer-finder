@@ -71,11 +71,9 @@ def parse_args():
 def run_primer_finder(input_file, output_file, logger):
     """Run the primer finder process."""
     logger.info(f"Starting primer-finding process on {input_file}")
-    # Create a lock for thread-safe operations
-    import threading
-    lock = threading.Lock()
+
     
-    connector = FileConnector(lock=lock, input_file=input_file, output_file=output_file)
+    connector = FileConnector(input_file=input_file, output_file=output_file)
     primer_finder = PrimerFinder(connector=connector)
     primer_finder.find_all_primers()
     logger.info(f"Primer Finder output has been written to {output_file}")

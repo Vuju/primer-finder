@@ -14,7 +14,7 @@ class Connector(ABC):
         pass
 
     @abstractmethod
-    def write_output(self, read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf):
+    def write_output(self, lock, read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf):
         """
         writes all the important information back to the output.
         """
