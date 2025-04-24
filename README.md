@@ -64,14 +64,15 @@ python -m primer_finder.cli --find-primers
 # Run only ORF detection
 primer-finder --find-orfs
 
-# Run both
+# Run both (default)
 primer-finder --find-primers --find-orfs
 ```
 
 Specify input and output files:
 
 ```bash
-primer-finder --find-primers --input path/to/input.fna --output path/to/output.csv
+primer-finder --input path/to/input.fna --output path/to/output.csv    # or
+primer-finder --find-primers --input path/to/eyeBOLD.db --table_name specimen
 ```
 
 ## Configuration

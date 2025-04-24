@@ -7,7 +7,7 @@ from primer_finder.matching.connectors.base import Connector
 
 class FileConnector(Connector):
 
-    def __init__(self, input_file, output_file,):
+    def __init__(self, input_file, output_file):
         self.input_file = input_file
         self.output_file = output_file
         self.length = -1

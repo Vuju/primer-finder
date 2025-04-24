@@ -126,7 +126,7 @@ class ConfigLoader:
         Raises:
             ConfigurationError: If the configuration is invalid.
         """
-        required_sections = ["paths", "logging", "features", "algorithm", "parallelization"]
+        required_sections = ["paths", "database", "logging", "features", "algorithm", "parallelization"]
         for section in required_sections:
             if section not in self.config:
                 raise ConfigurationError(f"Missing required configuration section: {section}")
@@ -136,13 +136,19 @@ class ConfigLoader:
         for path_key in required_paths:
             if path_key not in self.config["paths"]:
                 raise ConfigurationError(f"Missing required path: {path_key}")
+
+        # Validate database
+        required_paths = ["table_name"]
+        for path_key in required_paths:
+            if path_key not in self.config["database"]:
+                raise ConfigurationError(f"Missing required database path: {path_key}")
         
         # Validate logging
         if "level" not in self.config["logging"]:
             raise ConfigurationError("Missing required logging level")
         
         # Validate features
-        required_features = ["primer_finder", "orf_finder"]
+        required_features = ["enable_primer_finder", "enable_orf_finder"]
         for feature in required_features:
             if feature not in self.config["features"]:
                 raise ConfigurationError(f"Missing required feature toggle: {feature}")
