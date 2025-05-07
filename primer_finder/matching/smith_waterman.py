@@ -11,15 +11,42 @@ def default_substitution_function(letter_in_primer, letter_in_read) -> float:
 
     :return: 2 for a match, -1 otherwise.
     """
-    match letter_in_read:
+    match letter_in_primer:
         case 'A':
-            return 2 if letter_in_primer in "AWMRDHVN" else -1
+            return 2 if letter_in_read in "A" else -1
         case 'C':
-            return 2 if letter_in_primer in "CSMYBHVN" else -1
+            return 2 if letter_in_read in "C" else -1
         case 'G':
-            return 2 if letter_in_primer in "GSKRBDVN" else -1
+            return 2 if letter_in_read in "G" else -1
         case 'T':
-            return 2 if letter_in_primer in "TWKYBDHN" else -1
+            return 2 if letter_in_read in "TU" else -1
+        case 'U':
+            return 2 if letter_in_read in "TU" else -1
+        case 'W':
+            return 2 if letter_in_read in "ATU" else -1
+        case 'S':
+            return 2 if letter_in_read in "CG" else -1
+        case 'M':
+            return 2 if letter_in_read in "AC" else -1
+        case 'K':
+            return 2 if letter_in_read in "GTU" else -1
+        case 'R':
+            return 2 if letter_in_read in "AG" else -1
+        case 'Y':
+            return 2 if letter_in_read in "CTU" else -1
+        case 'B':
+            return 2 if letter_in_read in "CGTSKYU" else -1
+        case 'D':
+            return 2 if letter_in_read in "AGTWKRU" else -1
+        case 'H':
+            return 2 if letter_in_read in "ACTWMYU" else -1
+        case 'V':
+            return 2 if letter_in_read in "ACGSMR" else -1
+        case 'N':
+            return 2
+        case '-':
+            print("Wow there is a '-'!")
+            return 0
         case _:
             raise Exception(f"unknown literal in read sequence: '{letter_in_read}'")
 

@@ -17,31 +17,31 @@ def regex_builder(initialString):
             case 'G':
                 regexString += "G"
             case 'T':
-                regexString += "T"
+                regexString += "[TU]"
             case 'U':
-                regexString += "T"
+                regexString += "[TU]"
             case 'W':
-                regexString += "[AT]"
+                regexString += "[ATU]"
             case 'S':
                 regexString += "[CG]"
             case 'M':
                 regexString += "[AC]"
             case 'K':
-                regexString += "[GT]"
+                regexString += "[GTU]"
             case 'R':
                 regexString += "[AG]"
             case 'Y':
-                regexString += "[CT]"
+                regexString += "[CTU]"
             case 'B':
-                regexString += "[CGT]"
+                regexString += "[CGTSKYU]"
             case 'D':
-                regexString += "[AGT]"
+                regexString += "[AGTWKRU]"
             case 'H':
-                regexString += "[ACT]"
+                regexString += "[ACTWMYU]"
             case 'V':
-                regexString += "[ACG]"
+                regexString += "[ACGSMR]"
             case 'N':
-                regexString += "[ACGT]"
+                regexString += "."
             case _:
                 print(f"Unable to process primer. Didn't find {char}.")
     return regexString

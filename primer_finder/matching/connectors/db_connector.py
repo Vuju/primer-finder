@@ -6,10 +6,10 @@ from primer_finder.config import get_config_loader
 from primer_finder.matching.connectors.base import Connector
 
 
-def __encrypt_po(possible_orf: list[int]) -> int:
+def _encrypt_po(possible_orf: list[int]) -> int:
     return sum(1 << orf for orf in possible_orf)
 
-def __decrypt_po(possible_orf: int) -> list[int]:
+def _decrypt_po(possible_orf: int) -> list[int]:
     return [i for i in range(possible_orf.bit_length()) if possible_orf & (1 << i)]
 
 
@@ -21,7 +21,6 @@ class DbConnector(Connector):
         self.input_id_column_name = config["database"]["id_column_name"]
         self.input_sequence_column_name = config["database"]["sequence_column_name"]
 
-        # todo: parameterize input column names
         self.number_of_sequences = None
         self.db_path = db_path
         self.__init_db_connection()
@@ -79,7 +78,6 @@ class DbConnector(Connector):
                                     forward_match.score
                                 ))
             forward_match_id = cursor.lastrowid
-
             cursor.execute("""
                                 INSERT INTO primer_matches
                                 (specimen_id, primer_sequence, primer_start_index, primer_end_index, match_score)
@@ -100,7 +98,7 @@ class DbConnector(Connector):
                                 """, (
                                     forward_match_id,
                                     backward_match_id,
-                                    __encrypt_po(possible_orf)
+                                    _encrypt_po(possible_orf)
                                 ))
 
             cursor.execute("COMMIT")
