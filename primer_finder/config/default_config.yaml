@@ -4,9 +4,14 @@
 paths:
   primer_information: "./primer_finder/config/primer_information.csv"
   muscle: "/mnt/c/Users/Julian/bin/muscle"
-  input_file: "./data/DB.COX1.mini.fna"
-  output_file: "./data/primer-finder-result-mini.csv"
   log_file: "primer-finder_log.log"
+  input_file: "/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_db.db"
+  output_file: "./data/primer-finder-result-mini.csv" # only necessary if input is a fasta file.
+
+database:  # only necessary if input is a db file.
+  input_table_name: "specimen"
+  id_column_name: "specimenid"
+  sequence_column_name: "nuc_san"
 
 # Logger settings
 logging:
@@ -14,8 +19,8 @@ logging:
 
 # Feature toggles
 features:
-  primer_finder: false
-  orf_finder: false
+  enable_primer_finder: false
+  enable_orf_finder: false
 
 # Algorithm parameters
 algorithm:

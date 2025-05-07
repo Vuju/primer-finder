@@ -141,4 +141,4 @@ class PrimerFinder:
         if index != -1:
             score = len(primer) * self.smith_waterman.match_value
             read_match = read[index:end_index]
-        return MatchResultDTO(score, read_match, index, end_index)
+        return MatchResultDTO(score, read_match, index, end_index, primer)

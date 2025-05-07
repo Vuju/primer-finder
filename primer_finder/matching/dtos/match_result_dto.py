@@ -9,6 +9,7 @@ class MatchResultDTO:
     read: str = ''
     start_index: int = -1
     end_index: int = -1
+    primer_sequence: str = ''
 
     def is_mismatch(self):
         """

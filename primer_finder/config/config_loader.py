@@ -138,7 +138,7 @@ class ConfigLoader:
                 raise ConfigurationError(f"Missing required path: {path_key}")
 
         # Validate database
-        required_paths = ["table_name"]
+        required_paths = ["input_table_name", "id_column_name", "sequence_column_name"]
         for path_key in required_paths:
             if path_key not in self.config["database"]:
                 raise ConfigurationError(f"Missing required database path: {path_key}")
