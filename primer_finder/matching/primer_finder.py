@@ -19,6 +19,17 @@ def _init_lock(l):
     global lock
     lock = l
 
+def chunker(iterable, sub_chunk_size):
+    """Collect items from an iterable into chunks of size sub_chunksize"""
+    chunk = []
+    for item in iterable:
+        chunk.append(item)
+        if len(chunk) >= sub_chunk_size:
+            yield chunk
+            chunk = []
+    if chunk:
+        yield chunk
+
 class PrimerFinder:
     """
     A configured instance of PrimerFinder.
@@ -50,20 +61,29 @@ class PrimerFinder:
         Executes the primer finder algorithm with the set configuration.
         """
         self._get_primer_information()
-        sequences = self.connector.read_sequences()
         _lock = Lock()
 
         logger.info("Getting the number of sequences.")
         _total_number_of_sequences = self.connector.get_number_of_sequences()
 
         for i, primer_datum in enumerate(self.primer_data):
+            sequences = self.connector.read_sequences(primer_datum.forward_primer, primer_datum.backward_primer)
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=_total_number_of_sequences)
-            worker = partial(self._process_sequence, primer_datum)
+            worker = partial(self._process_sequences_chunk, primer_datum)
+
+            sequence_chunks = chunker(sequences, self.chunk_size)
+
             with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(_lock,)) as pool:
-                for _ in pool.imap(worker, sequences, chunksize=self.chunk_size):
-                    pbar.update(1)
+                for _ in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
+                    pbar.update(self.chunk_size)
             pbar.close()
+
+    def _process_sequences_chunk(self, query: PrimerDataDTO, sequence_list):
+        writeback_values = []
+        for sequence_object in sequence_list:
+            writeback_values.append(self._process_sequence(query, sequence_object))
+        self.connector.write_output(lock, writeback_values)
 
     def _process_sequence(self, query: PrimerDataDTO, sequence_object):
         _sequence_found = False
@@ -78,27 +98,30 @@ class PrimerFinder:
             return (max(0, i - distance - len(query.forward_primer) - offset),
                     max(0, i - distance + offset))
 
-        sequence_metadata, dna_sequence = sequence_object
+        sequence_metadata, dna_sequence, forward_match, backward_match = sequence_object
         dna_sequence = dna_sequence.strip()
         forward_search_interval, backward_search_interval = (0, len(dna_sequence)), (0, len(dna_sequence))
 
         ## first check for exact matches
-        forward_match = self._compute_regex_match(query.forward_primer,
-                                                  query.forward_primer_regex,
-                                                  dna_sequence)
-        if forward_match.start_index != -1:
-            backward_search_interval = __limit_to_interval_after(forward_match.end_index)
+        if forward_match.is_mismatch():
+            forward_match = self._compute_regex_match(query.forward_primer,
+                                                      query.forward_primer_regex,
+                                                      dna_sequence)
+        if backward_match.is_mismatch():
+            if not forward_match.is_mismatch():
+                backward_search_interval = __limit_to_interval_after(forward_match.end_index)
 
-        backward_match = self._compute_regex_match(query.backward_primer,
-                                                   query.backward_primer_regex,
-                                      dna_sequence[backward_search_interval[0]:backward_search_interval[1]])
-        if backward_match.start_index != -1:
-            backward_match.start_index += backward_search_interval[0]
-            backward_match.end_index += backward_search_interval[0]
-            forward_search_interval = __limit_to_interval_before(backward_match.start_index)
+            backward_match = self._compute_regex_match(query.backward_primer,
+                                                       query.backward_primer_regex,
+                                                       dna_sequence[backward_search_interval[0]:backward_search_interval[1]])
 
         ## for each missing exact match, try smith waterman:
         if forward_match.is_mismatch():
+            if not backward_match.is_mismatch():
+                backward_match.start_index += backward_search_interval[0]
+                backward_match.end_index += backward_search_interval[0]
+                forward_search_interval = __limit_to_interval_before(backward_match.start_index)
+
             forward_match = self.smith_waterman.align_partial(
                 primer=query.forward_primer,
                 super_sequence=dna_sequence,
@@ -122,11 +145,12 @@ class PrimerFinder:
         inter_primer_region = dna_sequence[forward_match.end_index:backward_match.start_index]
         _sequence_found = len(inter_primer_region.strip()) > 0
 
+        possible_orfs = []
         if _sequence_found:
             possible_orfs = list_possible_orf(inter_primer_region, translation_table=self.translation_table)
             possible_orfs = ([]) if len(possible_orfs) == 0 else possible_orfs
 
-            self.connector.write_output(lock, sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs)
+        return sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs
 
     def _get_primer_information(self):
         with open(self.primer_information_file, "r") as primer_info_file:

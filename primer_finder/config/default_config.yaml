@@ -5,7 +5,7 @@ paths:
   primer_information: "./primer_finder/config/primer_information.csv"
   muscle: "/mnt/c/Users/Julian/bin/muscle"
   log_file: "primer-finder_log.log"
-  input_file: "/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_db.db"
+  input_file: "/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini-2.db"
   output_file: "./data/primer-finder-result-mini.csv" # only necessary if input is a fasta file.
 
 database:  # only necessary if input is a db file.

@@ -1,6 +1,9 @@
+import logging
+
 from primer_finder.config.config_loader import get_config_loader
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
+logger = logging.getLogger(__name__)
 
 def default_substitution_function(letter_in_primer, letter_in_read) -> float:
     """
@@ -45,7 +48,7 @@ def default_substitution_function(letter_in_primer, letter_in_read) -> float:
         case 'N':
             return 2
         case '-':
-            print("Wow there is a '-'!")
+            logger.info("Wow there is a '-'!")
             return 0
         case _:
             raise Exception(f"unknown literal in read sequence: '{letter_in_read}'")
