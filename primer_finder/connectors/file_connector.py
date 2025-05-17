@@ -2,7 +2,7 @@ import gzip
 from multiprocessing import Lock
 from typing import TextIO
 
-from primer_finder.matching.connectors.base import Connector
+from connectors.base import Connector
 
 
 class FileConnector(Connector):
@@ -34,7 +34,7 @@ class FileConnector(Connector):
         self.length = count
         return self.length
 
-    def read_sequences(self):
+    def read_sequences_for_matching(self):
         file: TextIO
         if self.input_file.endswith('.gz'):
             file = gzip.open(self.input_file, 'rt')
@@ -61,7 +61,7 @@ class FileConnector(Connector):
 
             yield metadata_line, sequence_lines
 
-    def write_output(self, lock: Lock, read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf):
+    def write_output_matches(self, lock: Lock, read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf):
         with lock, open(self.output_file, 'a') as out_file:
             out_file.write(read_metadata.replace('|', ';').replace(',', ';').strip()
                            + f"{forward_match.score};{forward_match.read};{forward_match.start_index};"

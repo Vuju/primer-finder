@@ -1,13 +1,15 @@
 import logging
 import os
+import queue
 import sqlite3
+import threading
 from typing import Generator, Any
 
 import pandas as pd
 
 from primer_finder.config import get_config_loader
-from primer_finder.matching.connectors.base import Connector
-from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
+from connectors.base import Connector
+from dtos.match_result_dto import MatchResultDTO
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +21,14 @@ def _decrypt_po(possible_orf: int) -> list[int]:
 
 
 class DbConnector(Connector):
+    _write_queue = None
+    _writer_thread = None
+    _write_error = None
+    _write_complete = None
+    _instance_count = 0
+    _lock = threading.RLock()
 
-    def __init__(self,db_path: str, table_name: str = None) -> None:
+    def __init__(self, db_path: str, table_name: str = None) -> None:
         config = get_config_loader().get_config()
         self.input_table_name = table_name or config["database"]["input_table_name"]
         self.input_id_column_name = config["database"]["id_column_name"]
@@ -33,6 +41,15 @@ class DbConnector(Connector):
         self.__ensure_input_table_exists()
         self.__ensure_primer_matches_table_exists()
         self.__ensure_primer_pairs_table_exists()
+
+        with DbConnector._lock:
+            DbConnector._instance_count += 1
+            if DbConnector._write_queue is None:
+                DbConnector._write_queue = queue.Queue()
+                DbConnector._write_complete = threading.Event()
+                DbConnector._writer_thread = threading.Thread(target=self._writer_thread_function, daemon=True)
+                DbConnector._writer_thread.start()
+                logger.info("Started DB writer thread")
 
     def get_number_of_sequences(self) -> int:
         if self.number_of_sequences is not None:
@@ -48,7 +65,7 @@ class DbConnector(Connector):
         db.close()
         return self.number_of_sequences
 
-    def read_sequences(self, forward_primer, backward_primer, batch_size=1000) -> Generator[
+    def read_sequences_for_matching(self, forward_primer, backward_primer, batch_size=1000) -> Generator[
         tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
         query = f"""
                 SELECT 
@@ -122,8 +139,40 @@ class DbConnector(Connector):
         # Close the database connection
         db.close()
 
-    def write_output(self, _, information):
-        db = sqlite3.connect(self.db_path)
+    def write_output_matches(self, information):
+        """
+        Queue the output matches for writing by the writer thread
+        """
+        DbConnector._write_complete.clear()
+        batch_id = threading.get_ident()
+        DbConnector._write_queue.put((self.db_path, batch_id, information))
+        DbConnector._write_complete.wait()
+        error = DbConnector._write_error
+        if error:
+            DbConnector._write_error = None
+            raise error
+
+    def _writer_thread_function(self):
+        """
+        Writer thread function that processes database writes from the queue
+        """
+        while True:
+            try:
+                db_path, batch_id, information = DbConnector._write_queue.get()
+                self._perform_write(db_path, information)
+                DbConnector._write_queue.task_done()
+                DbConnector._write_complete.set()
+            except Exception as e:
+                logger.error(f"Error in writer thread: {str(e)}")
+                DbConnector._write_error = e
+                DbConnector._write_complete.set()
+                # Don't break the loop on error, just continue to the next item
+
+    def _perform_write(self, db_path, information):
+        """
+        Actual write operation to the database
+        """
+        db = sqlite3.connect(db_path)
         cursor = db.cursor()
         try:
             # Start a single transaction for all entries
@@ -343,3 +392,49 @@ class DbConnector(Connector):
 
         db.commit()
         db.close()
+
+        def close(self):
+            """
+            Clean shutdown method to make sure all writes are processed
+            """
+            if DbConnector._write_queue is not None:
+                DbConnector._write_queue.join()
+
+            with DbConnector._lock:
+                DbConnector._instance_count -= 1
+                if DbConnector._instance_count == 0:
+                    logger.info("Shutting down DB writer thread")
+                    # We could implement a proper shutdown mechanism here if needed
+
+        def __del__(self):
+            """
+            Destructor to ensure proper cleanup even if close() isn't called
+            """
+            try:
+                self.close()
+            except Exception as e:
+                pass  # Ignore errors in __del__
+
+    #------------------------  Connector for ORF Matching ------------------------
+
+
+    def read_pairs_chunk(self, chunk_size):
+        pass
+
+    def write_pair_chunk(self, solved):
+        pass
+
+    def get_remaining_unsolved_count(self):
+        pass
+
+    def get_next_unsolved_sequence(self):
+        pass
+
+    def find_comparison_group(self, current_entry, level, lower_reference_threshold, upper_reference_threshold):
+        pass
+
+    def fetch_related_sequences(self, current_entry, level):
+        pass
+
+    def update_sequences_with_results(self, solved):
+        pass

@@ -1,23 +1,18 @@
 import logging
 from functools import partial
-from multiprocessing import Pool, Lock
+from multiprocessing import Pool
 
 from tqdm import tqdm
 
 from primer_finder.config.config_loader import get_config_loader
 from primer_finder.orf.finder import list_possible_orf
-from primer_finder.matching.connectors.base import Connector
-from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
-from primer_finder.matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
+from connectors.base import Connector
+from dtos.match_result_dto import MatchResultDTO
+from dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
 from primer_finder.matching.regex import find_exact_match
 from primer_finder.matching.smith_waterman import SmithWaterman
 
 logger = logging.getLogger(__name__)
-
-lock = Lock()
-def _init_lock(l):
-    global lock
-    lock = l
 
 def chunker(iterable, sub_chunk_size):
     """Collect items from an iterable into chunks of size sub_chunksize"""
@@ -40,6 +35,7 @@ class PrimerFinder:
                  primer_information_file: str = None,
                  custom_num_threads: int = None,
                  chunk_size: int = None,
+                 chunk_chunk_size: int = None,
                  search_area: float = None,
                  smith_waterman_score_cutoff: float = None,
                  translation_table = None,
@@ -49,6 +45,7 @@ class PrimerFinder:
         self.primer_information_file = primer_information_file or config["paths"]["primer_information"]
         self.custom_num_threads = custom_num_threads or config["parallelization"]["num_threads"]
         self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
+        self.chunk_chunk_size = chunk_chunk_size or config["parallelization"]["chunk_chunk_size"]
         self.search_area = search_area or config["algorithm"]["search_area"]
         self.smith_waterman_score_cutoff = smith_waterman_score_cutoff or config["algorithm"]["smith_waterman_score_cutoff"]
         self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
@@ -61,21 +58,20 @@ class PrimerFinder:
         Executes the primer finder algorithm with the set configuration.
         """
         self._get_primer_information()
-        _lock = Lock()
 
         logger.info("Getting the number of sequences.")
         _total_number_of_sequences = self.connector.get_number_of_sequences()
 
         for i, primer_datum in enumerate(self.primer_data):
-            sequences = self.connector.read_sequences(primer_datum.forward_primer, primer_datum.backward_primer)
+            sequences = self.connector.read_sequences_for_matching(primer_datum.forward_primer, primer_datum.backward_primer)
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=_total_number_of_sequences)
             worker = partial(self._process_sequences_chunk, primer_datum)
 
             sequence_chunks = chunker(sequences, self.chunk_size)
 
-            with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(_lock,)) as pool:
-                for _ in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
+            with Pool(processes=self.custom_num_threads) as pool:
+                for _ in pool.imap(worker, sequence_chunks, chunksize=self.chunk_chunk_size):
                     pbar.update(self.chunk_size)
             pbar.close()
 
@@ -83,7 +79,9 @@ class PrimerFinder:
         writeback_values = []
         for sequence_object in sequence_list:
             writeback_values.append(self._process_sequence(query, sequence_object))
-        self.connector.write_output(lock, writeback_values)
+        retry_delay = .2  # seconds
+        self.connector.write_output_matches(writeback_values)
+
 
     def _process_sequence(self, query: PrimerDataDTO, sequence_object):
         _sequence_found = False

@@ -1,7 +1,7 @@
 import logging
 
 from primer_finder.config.config_loader import get_config_loader
-from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
+from dtos.match_result_dto import MatchResultDTO
 
 logger = logging.getLogger(__name__)
 

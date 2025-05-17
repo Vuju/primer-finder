@@ -52,3 +52,4 @@ parallelization:
   # Set to null to select the maximum number for your cpu.
   num_threads: null
   chunk_size: 100
+  chunk_chunk_size: 10

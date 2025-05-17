@@ -7,9 +7,9 @@ import pandas as pd
 import pyhmmer
 
 from Bio.Seq import Seq
-from pyhmmer.easel import TextSequence
 from tqdm import tqdm
 
+from connectors.base import Connector
 from primer_finder.config.config_loader import get_config_loader
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,8 @@ class OrfDecider:
     """
     progress_bar: tqdm
     def __init__(self,
+                 connector: Connector,
+                 chunk_size: int = None,
                  translation_table = None,
                  muscle_path = None,
                  e_value_threshold = None,
@@ -37,13 +39,110 @@ class OrfDecider:
         :param lower_reference_threshold: Defines the least number of sequences necessary to build an HMM.
         :param upper_reference_threshold: Defines the upper limit for the number of sequences used to build an HMM.
         """
-        config = get_config_loader().get_config()
+        self.connector = connector
 
+        config = get_config_loader().get_config()
+        self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
         self.muscle_path = muscle_path or config["paths"]["muscle"]
         self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
         self.e_value_threshold = e_value_threshold or config["algorithm"]["e_value"]
         self.lower_reference_threshold = lower_reference_threshold or config["algorithm"]["orf_matching_lower_threshold"]
         self.upper_reference_threshold = upper_reference_threshold or config["algorithm"]["orf_matching_upper_threshold"]
+
+    def solve_all_orfs(self):
+        # chunk-wise iterate over all primer pairs and set trivial ones.
+            # connector: read chunk
+            # for seq in chunk:
+                # check if trivial
+                # prepare writeback if trivial
+            # connector: writeback chunk
+        # connector: while next exists: get the next open sequence
+            # connector: search for a sufficient comparison group
+            # build hmm
+                # connector: fetch batch of related sequences
+                    # query chunk of sequences against hmm
+                # connector: writeback results
+        """
+        Process and solve all ORFs using the provided connector for data operations.
+        """
+        # Statistics tracking
+        total_processed = 0
+        trivially_solved = 0
+        hmm_solved = 0
+        not_enough_references = 0
+        failed = 0
+
+        # Process trivial cases first in chunks
+        while True:
+            chunk = self.connector.read_pairs_chunk(self.chunk_size)
+            if chunk.empty:
+                break
+
+            solved = self._process_trivial_orfs(chunk)
+            trivially_solved += len(solved)
+            total_processed += len(chunk)
+
+            if not solved.empty:
+                self.connector.write_pair_chunk(solved)
+
+        logger.info(f"Processed {total_processed} sequences. Trivially solved: {trivially_solved}")
+
+        remaining_count = self.connector.get_remaining_unsolved_count()
+        self.progress_bar = tqdm(total=remaining_count)
+
+        taxonomic_levels = ['Species', 'Genus', 'Family', 'Order', 'Class']
+
+        # Process non-trivial cases using HMM
+        while True:
+            current_entry = self.connector.get_next_unsolved_sequence()
+            if current_entry is None:
+                break
+
+            solved_this_iteration = False
+
+            for level in taxonomic_levels:
+                comparison_group, success = self.connector.find_comparison_group(
+                    current_entry,
+                    level,
+                    self.lower_reference_threshold,
+                    self.upper_reference_threshold
+                )
+
+                if success:
+                    hmm = self._construct_hmm(comparison_group)
+                    # todo: chunk process this:
+                    related_entries = self.connector.fetch_related_sequences(current_entry, level)
+                    solved = self._query_sequences_against_hmm(hmm, related_entries)
+
+                    hmm_solved += len(solved)
+                    failed += len(related_entries) - len(solved)
+                    if self.progress_bar:
+                        self.progress_bar.update(len(related_entries))
+
+                    if not solved.empty:
+                        self.connector.update_sequences_with_results(solved)
+
+                    solved_this_iteration = True
+                    break
+
+            if not solved_this_iteration:
+                species_value = current_entry['Species']
+                related_species = self.connector.fetch_related_sequences(current_entry, 'Species')
+                unsolvable_count = len(related_species)
+
+                logger.warning(f"Removing Species '{species_value}' with {unsolvable_count} members to continue.")
+                not_enough_references += unsolvable_count
+
+                # Update progress bar
+                if self.progress_bar:
+                    self.progress_bar.update(unsolvable_count)
+
+        if self.progress_bar:
+            self.progress_bar.close()
+
+        logger.info(f"HMM solved: {hmm_solved}")
+        logger.info(f"A total of {not_enough_references} entries did not have enough references to match.")
+        logger.info(f"{failed} entries were not matched successfully.")
 
     def solve_orfs_for_df(self, df: pd.DataFrame):
         """
@@ -202,7 +301,7 @@ class OrfDecider:
         text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
         return text_seq
 
-    def _get_possible_amino_text_sequences_of(self, entry: pd.Series) -> [TextSequence]:
+    def _get_possible_amino_text_sequences_of(self, entry: pd.Series):
         possible_orfs = ast.literal_eval(entry["possible_orfs"])
         seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
         seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
@@ -215,6 +314,13 @@ class OrfDecider:
                                                  sequence=str(protein))
             seqs[i] = text_seq
         return seqs
+
+    def _process_trivial_orfs(self, chunk):
+
+        chunk["orf_index"] = chunk.apply(
+            lambda x: x["orf_candidates"] if x["orf_candidates"] < 3 else x["orf_index"],
+            axis=1)
+        return chunk
 
 
 def _trim_to_triplet(sequence):

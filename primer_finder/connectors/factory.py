@@ -1,6 +1,6 @@
 from primer_finder.config import ConfigurationError
-from primer_finder.matching.connectors.db_connector import DbConnector
-from primer_finder.matching.connectors.file_connector import FileConnector
+from connectors.db_connector import DbConnector
+from connectors.file_connector import FileConnector
 
 
 def get_connector(input_file_path: str, connector_args):
