@@ -75,7 +75,8 @@ class PrimerFinder:
             sequence_chunks = chunker(sequences, self.chunk_size)
 
             with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(_lock,)) as pool:
-                for _ in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
+                for wbv in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
+                    self.connector.write_output(lock, wbv)
                     pbar.update(self.chunk_size)
             pbar.close()
 
@@ -83,7 +84,7 @@ class PrimerFinder:
         writeback_values = []
         for sequence_object in sequence_list:
             writeback_values.append(self._process_sequence(query, sequence_object))
-        self.connector.write_output(lock, writeback_values)
+        return writeback_values
 
     def _process_sequence(self, query: PrimerDataDTO, sequence_object):
         _sequence_found = False

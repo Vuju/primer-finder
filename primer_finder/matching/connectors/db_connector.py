@@ -77,7 +77,8 @@ class DbConnector(Connector):
         offset = 0
         db = sqlite3.connect(self.db_path)
 
-        while True:
+        # while true:
+        for _ in range(1000): # debug
             # Add pagination to the query
             pagination_query = f"{query} LIMIT {batch_size} OFFSET {offset}"
             # Use pandas to read the results into a DataFrame
@@ -124,6 +125,12 @@ class DbConnector(Connector):
 
     def write_output(self, _, information):
         db = sqlite3.connect(self.db_path)
+        db.execute('PRAGMA synchronous = NORMAL')
+        db.execute('PRAGMA journal_mode=WAL')
+        db.execute('PRAGMA wal_autocheckpoint = 0')
+        db.execute('PRAGMA journal_size_limit = 0')
+        db.execute('PRAGMA cache_size = -64000')
+        db.execute('PRAGMA temp_store = MEMORY')
         cursor = db.cursor()
         try:
             # Start a single transaction for all entries
@@ -207,17 +214,18 @@ class DbConnector(Connector):
                 VALUES (?, ?, ?, ?, ?, ?)
             """, primer_pairs_data)
 
-            # Commit all changes at once
-            cursor.execute("COMMIT")
+            db.commit()
+            db.execute('PRAGMA wal_checkpoint(PASSIVE)')
+            #wal_size = os.path.getsize("/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini.db-wal")
+            #print(f"WAL size: {wal_size / (1024*1024):.2f} MB")
 
         except Exception as e:
             # Rollback in case of error
             logger.error(f"Failed to write primer pair data: {str(e)}")
             cursor.execute("ROLLBACK")
-            db.close()
             raise Exception(f"Failed to write primer pair data: {str(e)}")
-
-        db.close()
+        finally:
+            cursor.close()
 
     def _set_flags(self, forward_match, backward_match) -> int:
         f_cutoff = self.cutoff * 2 * len(forward_match.primer_sequence)
