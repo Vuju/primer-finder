@@ -42,9 +42,8 @@ class DbConnector(Connector):
                 SELECT COUNT(*) FROM {self.input_table_name}
                 """
         db = sqlite3.connect(self.db_path)
-        cursor = db.cursor()
-        cursor.execute(query)
-        self.number_of_sequences = cursor.fetchone()[0]
+        result = db.execute(query)
+        self.number_of_sequences = result.fetchone()[0]
         db.close()
         return self.number_of_sequences
 
@@ -77,8 +76,7 @@ class DbConnector(Connector):
         offset = 0
         db = sqlite3.connect(self.db_path)
 
-        # while true:
-        for _ in range(1000): # debug
+        while True:
             # Add pagination to the query
             pagination_query = f"{query} LIMIT {batch_size} OFFSET {offset}"
             # Use pandas to read the results into a DataFrame
@@ -224,6 +222,7 @@ class DbConnector(Connector):
             raise Exception(f"Failed to write primer pair data: {str(e)}")
         finally:
             cursor.close()
+            db.close()
 
     def _set_flags(self, forward_match, backward_match) -> int:
         f_cutoff = self.cutoff * 2 * len(forward_match.primer_sequence)
