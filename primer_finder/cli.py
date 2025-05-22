@@ -7,7 +7,7 @@ import sys
 import pandas as pd
 
 from primer_finder.config.config_loader import get_config_loader
-from primer_finder.matching.connectors.factory import get_connector
+from connectors import get_connector
 
 config = get_config_loader().get_config()
 log_level = config["logging"]["level"]
@@ -18,7 +18,6 @@ input_file_path = config["paths"]["input_file"]
 output_file_path = config["paths"]["output_file"] if "output_file" in config["paths"] else None
 db_table_name = config["database"]["table_name"] if "table_name" in config["database"] else None
 
-from primer_finder.matching.connectors.file_connector import FileConnector
 from primer_finder.matching.primer_finder import PrimerFinder
 from primer_finder.orf.decider import OrfDecider
 

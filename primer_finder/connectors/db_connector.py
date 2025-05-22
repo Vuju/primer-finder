@@ -6,7 +6,7 @@ from typing import Generator, Any
 import pandas as pd
 
 from primer_finder.config import get_config_loader
-from primer_finder.matching.connectors.base import Connector
+from connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
 logger = logging.getLogger(__name__)

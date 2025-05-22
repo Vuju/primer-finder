@@ -2,7 +2,7 @@ import gzip
 from multiprocessing import Lock
 from typing import TextIO
 
-from primer_finder.matching.connectors.base import Connector
+from connectors.base import Connector
 
 
 class FileConnector(Connector):
