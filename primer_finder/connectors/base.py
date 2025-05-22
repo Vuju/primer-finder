@@ -31,3 +31,61 @@ class Connector(ABC):
         Returns the number of sequences in the input.
         """
         pass
+
+
+    #------------------------------------ ORF matching methods ---------------------------------
+    @abstractmethod
+    def read_pairs_chunk(self, chunk_size):
+        """
+        Reads a chunk of pairs of sequences from the primer-pairs table.
+        :param chunk_size:
+        :return:
+        """
+        pass
+
+    @abstractmethod
+    def write_pair_chunk(self, solved):
+        """
+        Updates the primer-pairs table with the solved pairs.
+        :param solved:
+        :return:
+        """
+        pass
+
+    @abstractmethod
+    def get_remaining_unsolved_count(self):
+        """
+        Returns the number of unsolved entries in the primer-pairs table.
+        :return:
+        """
+        pass
+
+    @abstractmethod
+    def get_next_unsolved_sequence(self):
+        """
+        Fetches a single unsolved entry from the primer-pairs table.
+        :return:
+        """
+        pass
+
+    @abstractmethod
+    def find_comparison_group(self, current_entry, level, lower_reference_threshold, upper_reference_threshold):
+        """
+        Returns a comparison group for the given entry, based on taxonomy.
+        :param current_entry:
+        :param level:
+        :param lower_reference_threshold:
+        :param upper_reference_threshold:
+        :return:
+        """
+        pass
+
+    @abstractmethod
+    def fetch_unsolved_related_sequences(self, current_entry, level):
+        """
+        Fetches related sequences for the given entry that are unsolved as well.
+        :param current_entry:
+        :param level:
+        :return:
+        """
+        pass

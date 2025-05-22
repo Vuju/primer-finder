@@ -347,3 +347,23 @@ class DbConnector(Connector):
 
         db.commit()
         db.close()
+
+    # ------------------------  Connector for ORF Matching ------------------------
+
+    def read_pairs_chunk(self, chunk_size):
+        pass
+
+    def write_pair_chunk(self, solved):
+        pass
+
+    def get_remaining_unsolved_count(self):
+        pass
+
+    def get_next_unsolved_sequence(self):
+        pass
+
+    def find_comparison_group(self, current_entry, level, lower_reference_threshold, upper_reference_threshold):
+        pass
+
+    def fetch_unsolved_related_sequences(self, current_entry, level):
+        pass
