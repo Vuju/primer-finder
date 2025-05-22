@@ -65,7 +65,6 @@ class PrimerFinder:
 
         logger.info("Getting the number of sequences.")
         _total_number_of_sequences = self.connector.get_number_of_sequences()
-
         for i, primer_datum in enumerate(self.primer_data):
             sequences = self.connector.read_sequences(primer_datum.forward_primer, primer_datum.backward_primer)
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
@@ -73,11 +72,16 @@ class PrimerFinder:
             worker = partial(self._process_sequences_chunk, primer_datum)
 
             sequence_chunks = chunker(sequences, self.chunk_size)
-
-            with Pool(processes=self.custom_num_threads, initializer=_init_lock, initargs=(_lock,)) as pool:
+            with Pool(processes=self.custom_num_threads) as pool:
+                results_buffer = []
                 for wbv in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
-                    self.connector.write_output(lock, wbv)
+                    results_buffer.extend(wbv)
+                    if len(results_buffer) >= 20000:  # Adjust batch size
+                        self.connector.write_output("", results_buffer)
+                        results_buffer = []
                     pbar.update(self.chunk_size)
+                if results_buffer:
+                    self.connector.write_output("", results_buffer)
             pbar.close()
 
     def _process_sequences_chunk(self, query: PrimerDataDTO, sequence_list):

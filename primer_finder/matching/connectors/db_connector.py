@@ -48,7 +48,7 @@ class DbConnector(Connector):
         db.close()
         return self.number_of_sequences
 
-    def read_sequences(self, forward_primer, backward_primer, batch_size=1000) -> Generator[
+    def read_sequences(self, forward_primer, backward_primer, batch_size=50000) -> Generator[
         tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
         query = f"""
                 SELECT 
@@ -127,9 +127,8 @@ class DbConnector(Connector):
         db = sqlite3.connect(self.db_path)
         db.execute('PRAGMA synchronous = NORMAL')
         db.execute('PRAGMA journal_mode=WAL')
-        db.execute('PRAGMA wal_autocheckpoint = 0')
         db.execute('PRAGMA journal_size_limit = 0')
-        db.execute('PRAGMA cache_size = -64000')
+        db.execute('PRAGMA cache_size = -2000')
         db.execute('PRAGMA temp_store = MEMORY')
         cursor = db.cursor()
         try:
@@ -215,7 +214,6 @@ class DbConnector(Connector):
             """, primer_pairs_data)
 
             db.commit()
-            db.execute('PRAGMA wal_checkpoint(PASSIVE)')
             #wal_size = os.path.getsize("/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini.db-wal")
             #print(f"WAL size: {wal_size / (1024*1024):.2f} MB")
 
@@ -243,8 +241,7 @@ class DbConnector(Connector):
         if not os.path.exists(self.db_path):
             raise FileNotFoundError(f"File {self.db_path} does not exist")
         db = sqlite3.connect(self.db_path)
-        cursor = db.cursor()
-        if cursor.execute("SELECT name FROM sqlite_master WHERE name=?", (self.input_table_name,)).fetchone() is None:
+        if db.execute("SELECT name FROM sqlite_master WHERE name=?", (self.input_table_name,)).fetchone() is None:
             raise KeyError(f"No {self.input_table_name} table in {self.db_path}")
         db.close()
 
