@@ -7,7 +7,7 @@ import sys
 import pandas as pd
 
 from primer_finder.config.config_loader import get_config_loader
-from connectors import get_connector
+from primer_finder.connectors.factory import get_connector
 
 config = get_config_loader().get_config()
 log_level = config["logging"]["level"]
@@ -76,25 +76,20 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_primer_finder(input_file, connector_args, logger):
+def run_primer_finder(connector, logger):
     """Run the primer finder process."""
-    logger.info(f"Starting primer-finding process on {input_file}")
-
-    connector = get_connector(input_file_path=input_file, connector_args=connector_args)
+    logger.info(f"Starting primer-finding process.")
     primer_finder = PrimerFinder(connector=connector)
     primer_finder.find_all_primers()
     logger.info(f"Primer Finder process has finished.")
 
 
-def run_orf_finder(file_path, logger):
+def run_orf_finder(connector, logger):
     """Run the ORF finder process."""
-    logger.info(f"Starting ORF-matching process")
-    orf_finder = OrfDecider()
-    all_entries = pd.read_csv(file_path, sep=";")
-    solved = orf_finder.solve_orfs_for_df(df=all_entries)
-    logger.info("Starting write-back")
-    solved.to_csv(file_path)
-    logger.info(f"ORF matching output has been written to {file_path}")
+    logger.info(f"Starting ORF-matching process.")
+    orf_decider = OrfDecider(connector=connector)
+    orf_decider.solve_all_orfs()
+    logger.info(f"ORF matching completed.")
 
 
 def main():
@@ -105,16 +100,17 @@ def main():
     if not args.find_primers and not args.find_orfs:
         args.find_primers = True
         args.find_orfs = True
+    connector_args = {
+        "output_file": args.output,
+        "db_table_name": args.table_name,
+    }
+    connector = get_connector(input_file_path=args.input, connector_args=connector_args)
 
     if args.find_primers:
-        connector_args = {
-            "output_file": args.output,
-            "db_table_name": args.table_name,
-        }
-        run_primer_finder(args.input, connector_args, logger)
+        run_primer_finder(connector, logger)
 
     if args.find_orfs:
-        run_orf_finder(args.output, logger)
+        run_orf_finder(connector, logger)
 
     return 0
 

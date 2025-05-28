@@ -69,7 +69,7 @@ class Connector(ABC):
         pass
 
     @abstractmethod
-    def find_comparison_group(self, current_entry, level, lower_reference_threshold, upper_reference_threshold):
+    def fetch_sampled_solved_related_sequences(self, current_entry, level, lower_reference_threshold, upper_reference_threshold):
         """
         Returns a comparison group for the given entry, based on taxonomy.
         :param current_entry:

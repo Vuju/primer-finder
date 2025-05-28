@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+import random
 from typing import Generator, Any
 
 import pandas as pd
@@ -162,9 +163,13 @@ class DbConnector(Connector):
 
             # Execute batch insert for primer matches
             cursor.executemany("""
-                INSERT OR REPLACE INTO primer_matches
+                INSERT INTO primer_matches
                 (specimen_id, primer_sequence, primer_start_index, primer_end_index, match_score)
                 VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(specimen_id, primer_sequence) DO UPDATE 
+                    SET match_score = excluded.match_score,
+                        primer_start_index = excluded.primer_start_index,
+                        primer_end_index = excluded.primer_end_index
             """, primer_matches_data)
 
             # We need to retrieve the IDs for each pair to link in primer_pairs table
@@ -213,7 +218,7 @@ class DbConnector(Connector):
 
             db.commit()
             #wal_size = os.path.getsize("/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini.db-wal")
-            #print(f"WAL size: {wal_size / (1024*1024):.2f} MB")
+            #logger.info(f"WAL size: {wal_size / (1024*1024):.2f} MB")
 
         except Exception as e:
             # Rollback in case of error
@@ -344,26 +349,180 @@ class DbConnector(Connector):
         for column, data_type in required_columns.items():
             if column not in existing_columns:
                 cursor.execute(f"ALTER TABLE primer_pairs ADD COLUMN {column} {data_type}")
-
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_orf_index ON primer_pairs(orf_index)")
         db.commit()
         db.close()
 
     # ------------------------  Connector for ORF Matching ------------------------
 
-    def read_pairs_chunk(self, chunk_size):
-        pass
+    def read_pairs_chunk(self, chunk_size, batch_size = 50000):
+        query = f"""
+                SELECT forward_match_id, reverse_match_id, specimen_id, inter_primer_sequence, 
+                orf_candidates, orf_index, orf_aa, matching_flags
+                FROM primer_pairs                
+                """
+        offset = 0
+        db = sqlite3.connect(self.db_path)
+        while True:
+            pagination_query = f"{query} LIMIT {batch_size} OFFSET {offset}"
+            offset += batch_size
+            df = pd.read_sql_query(
+                sql=pagination_query,
+                con=db,
+            )
+            if df.empty:
+                break
+            yield df
+        db.close()
 
     def write_pair_chunk(self, solved):
-        pass
+        db = sqlite3.connect(self.db_path)
+        db.execute('PRAGMA synchronous = NORMAL')
+        db.execute('PRAGMA journal_mode=WAL')
+        db.execute('PRAGMA journal_size_limit = 0')
+        db.execute('PRAGMA cache_size = -2000')
+        db.execute('PRAGMA temp_store = MEMORY')
+        try:
+            db.execute("BEGIN TRANSACTION")
+            # Convert DataFrame to list of tuples
+            data_tuples = [tuple(row) for row in solved.itertuples(index=False, name=None)]
+
+            # Use INSERT OR REPLACE to handle conflicts
+            insert_query = '''
+            INSERT OR REPLACE INTO primer_pairs 
+            (forward_match_id, reverse_match_id, specimen_id, inter_primer_sequence, 
+             orf_candidates, orf_index, orf_aa, matching_flags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            '''
+
+            db.executemany(insert_query, data_tuples)
+            db.commit()
+            db.close()
+        except Exception as e:
+            logger.error(f"Failed to write primer pair data: {str(e)}")
+            db.execute("ROLLBACK")
+            raise Exception(f"Failed to write primer pair data: {str(e)}")
+        finally:
+            db.close()
 
     def get_remaining_unsolved_count(self):
-        pass
+        db = sqlite3.connect(self.db_path)
+        result = db.execute(f"""
+                SELECT COUNT(*) 
+                FROM primer_pairs
+                WHERE orf_index IS NULL
+                """)
+        return result.fetchone()[0]
 
     def get_next_unsolved_sequence(self):
-        pass
+        db = sqlite3.connect(self.db_path)
+        try:
+            query = """
+                    SELECT forward_match_id,
+                           reverse_match_id,
+                           specimen_id,
+                           inter_primer_sequence,
+                           orf_candidates,
+                           orf_index,
+                           orf_aa,
+                           matching_flags
+                    FROM primer_pairs
+                    WHERE orf_index IS NULL
+                    LIMIT 1
+                    """
+            df = pd.read_sql_query(query, db)
+            db.close()
+            return df
+        except Exception as e:
+            logger.error(f"Error fetching data: {e}")
+            db.close()
+            return pd.DataFrame()  # Return empty DataFrame on error
 
-    def find_comparison_group(self, current_entry, level, lower_reference_threshold, upper_reference_threshold):
-        pass
+    def fetch_sampled_solved_related_sequences(self, current_entry, level, lower_reference_threshold, upper_reference_threshold, random_seed: int = None):
+        if random_seed is not None:
+            random.seed(random_seed)
+
+        matching_entries = self._fetch_related_sequences(current_entry, level, True)
+        if len(matching_entries) > lower_reference_threshold:
+            # Randomly sample up to max_entries from this group
+            sample_size = min(upper_reference_threshold, len(matching_entries))
+            selected_entries = matching_entries.sample(n=sample_size, axis=0, random_state=random_seed)
+            return selected_entries, True
+        else:
+            return None, False
+
 
     def fetch_unsolved_related_sequences(self, current_entry, level):
-        pass
+        return self._fetch_related_sequences(current_entry, level, False)
+
+    def _fetch_related_sequences(self, current_entry, level, solved: bool):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+
+        try:
+            cursor = conn.cursor()
+
+            # First, get the primer sequences from the input primer pair
+            primer_lookup_query = """
+                                  SELECT fm.primer_sequence as forward_primer,
+                                         rm.primer_sequence as reverse_primer,
+                                         s.specimenid       as input_specimen_id,
+                                         s.*
+                                  FROM primer_pairs pp
+                                           LEFT JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
+                                           LEFT JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
+                                           LEFT JOIN specimen s ON pp.specimen_id = s.specimenid
+                                  WHERE pp.forward_match_id = ?
+                                    AND pp.reverse_match_id = ?
+                                  """
+
+            f_id = int(current_entry["forward_match_id"].iloc[0])
+            b_id = int(current_entry["reverse_match_id"].iloc[0])
+
+            cursor.execute(primer_lookup_query, (f_id, b_id))
+            input_primer_info = cursor.fetchone()
+
+            if not input_primer_info:
+                logger.error(
+                    f"No primer pair found with forward_match_id={f_id}, "
+                    f"reverse_match_id={b_id}")
+                return None, False
+
+            forward_primer_seq = input_primer_info['forward_primer']
+            reverse_primer_seq = input_primer_info['reverse_primer']
+            input_taxonomic_group = input_primer_info[level]
+
+            if not input_taxonomic_group:
+                logger.error(f"Input specimen has no {level} information")
+                return None, False
+
+            # Find all primer pairs with the same primer sequences in the same taxonomic group that are solved
+            discovery_query = f"""
+                SELECT pp.forward_match_id, pp.reverse_match_id, pp.specimen_id,
+                       pp.inter_primer_sequence, pp.orf_candidates, pp.orf_index, 
+                       pp.orf_aa, pp.matching_flags
+                FROM primer_pairs pp
+                JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
+                JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
+                JOIN specimen s ON pp.specimen_id = s.specimenid
+                WHERE fm.primer_sequence = ?
+                  AND rm.primer_sequence = ?
+                  AND s.{level} = ?
+                  {"AND pp.orf_index IS NOT NULL" if solved else ""}
+                ORDER BY pp.specimen_id
+                """
+
+            matching_entries = pd.read_sql_query(
+                sql=discovery_query,
+                con=conn,
+                params=[forward_primer_seq, reverse_primer_seq, input_taxonomic_group],
+            )
+
+            logger.info(f"Found {len(matching_entries)} related entries for {forward_primer_seq} and {reverse_primer_seq} in {input_taxonomic_group}")
+            return matching_entries
+
+        except Exception as e:
+            logger.error(f"Error while finding related group for: {e}")
+            return None
+        finally:
+            conn.close()

@@ -7,10 +7,9 @@ import pandas as pd
 import pyhmmer
 
 from Bio.Seq import Seq
-from pyhmmer.easel import TextSequence
 from tqdm import tqdm
 
-from connectors.base import Connector
+from primer_finder.connectors.base import Connector
 from primer_finder.config.config_loader import get_config_loader
 
 logger = logging.getLogger(__name__)
@@ -76,24 +75,21 @@ class OrfDecider:
         failed = 0
 
         # Process trivial cases first in chunks
-        while True:
-            chunk = self.connector.read_pairs_chunk(self.chunk_size)
-            if chunk.empty:
-                break
-
-            solved = self._process_trivial_orfs(chunk)
-            trivially_solved += len(solved)
-            total_processed += len(chunk)
-
-            if not solved.empty:
-                self.connector.write_pair_chunk(solved)
-
-        logger.info(f"Processed {total_processed} sequences. Trivially solved: {trivially_solved}")
+        # chunk_generator = self.connector.read_pairs_chunk(self.chunk_size)
+        # for chunk in chunk_generator:
+        #     solved = self._process_trivial_orfs(chunk)
+        #     trivially_solved += len(solved)
+        #     total_processed += len(chunk)
+        #     if not solved.empty:
+        #         # todo possibly collect for fewer writes
+        #         self.connector.write_pair_chunk(solved)
+        #
+        # logger.info(f"Processed {total_processed} sequences. Trivially solved: {trivially_solved}")
 
         remaining_count = self.connector.get_remaining_unsolved_count()
         self.progress_bar = tqdm(total=remaining_count)
 
-        taxonomic_levels = ['Species', 'Genus', 'Family', 'Order', 'Class']
+        taxonomic_levels = ['taxon_species', 'taxon_genus', 'taxon_family', 'taxon_order', 'taxon_class']
 
         # Process non-trivial cases using HMM
         while True:
@@ -104,7 +100,7 @@ class OrfDecider:
             solved_this_iteration = False
 
             for level in taxonomic_levels:
-                comparison_group, success = self.connector.find_comparison_group(
+                comparison_group, success = self.connector.fetch_sampled_solved_related_sequences(
                     current_entry,
                     level,
                     self.lower_reference_threshold,
@@ -129,11 +125,11 @@ class OrfDecider:
                     break
 
             if not solved_this_iteration:
-                species_value = current_entry['Species']
-                unsolved_related_species = self.connector.fetch_unsolved_related_sequences(current_entry, 'Species')
+                entry_id = current_entry['specimen_id']
+                unsolved_related_species = self.connector.fetch_unsolved_related_sequences(current_entry, 'taxon_species')
                 unsolvable_count = len(unsolved_related_species)
 
-                logger.warning(f"Removing Species '{species_value}' with {unsolvable_count} members to continue.")
+                logger.warning(f"Removing Species '{entry_id}' and {unsolvable_count} members of the same species to continue.")
                 not_enough_references += unsolvable_count
 
                 # Update progress bar
@@ -157,7 +153,7 @@ class OrfDecider:
         """
         unsolved_results = df[~df['possible_orfs'].str.contains(r'\[\]')]
         solved_results = unsolved_results[~unsolved_results['possible_orfs'].str.contains(',')]
-        unsolved_results = unsolved_results[~(unsolved_results['Read ID'].isin(solved_results['Read ID']))]
+        unsolved_results = unsolved_results[~(unsolved_results["specimen_id"].isin(solved_results["specimen_id"]))]
         solved_results["ORF"] = solved_results.apply(lambda x: x["possible_orfs"][1], axis=1)
 
         not_enough_references = 0
@@ -263,7 +259,6 @@ class OrfDecider:
         pipeline.bias_filter = False
         pipeline.E = self.e_value_threshold
 
-        ambiguous_entries.loc[:, 'ORF'] = ''
         modified_entries = pd.DataFrame(columns=ambiguous_entries.columns)
         total_hits = 0
 
@@ -283,11 +278,11 @@ class OrfDecider:
 
                 # store best result
                 [read_id, correct_orf] = top_hit.name.decode().split("_")
-                ambiguous_entries.loc[ambiguous_entries['Read ID'] == read_id, 'ORF'] = correct_orf
-                if len(modified_entries[modified_entries["Read ID"] == read_id]) == 0:
+                ambiguous_entries.loc[ambiguous_entries["specimen_id"] == int(read_id), 'orf_index'] = int(correct_orf)
+                if len(modified_entries[modified_entries["specimen_id"] == int(read_id)]) == 0:
                     modified_entries = pd.concat([modified_entries,
                                                   ambiguous_entries.loc[
-                                                      ambiguous_entries['Read ID'] == read_id].copy()],
+                                                      ambiguous_entries["specimen_id"] == int(read_id)].copy()],
                                                  ignore_index=True)
 
             if self.progress_bar is not None:
@@ -296,38 +291,42 @@ class OrfDecider:
         return modified_entries
 
     def _get_amino_text_sequence_of(self, entry: pd.Series) -> pyhmmer.easel.TextSequence:
-        dna = Seq(entry["read"])
-        frame = int(entry["ORF"])
-        framed_region = dna[frame:]
-        framed_region = _trim_to_triplet(framed_region)
-        protein = framed_region.translate(table=self.translation_table)
-        text_seq = pyhmmer.easel.TextSequence(name=entry["Read ID"].encode(), sequence=(str(protein)))
+        aa_sequence = entry["orf_aa"]
+        text_seq = pyhmmer.easel.TextSequence(name=str(entry["specimen_id"]).encode(), sequence=aa_sequence)
         return text_seq
 
     def _get_possible_amino_text_sequences_of(self, entry: pd.Series):
-        possible_orfs = ast.literal_eval(entry["possible_orfs"])
+        possible_orfs = _decrypt_po(entry["orf_candidates"])
         seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
         seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
         for i, possible_orf in enumerate(possible_orfs):
-            dna = Seq(entry["read"])
-            framed_region = dna[possible_orf:]
-            framed_region = _trim_to_triplet(framed_region)
-            protein = framed_region.translate(table=self.translation_table)
-            text_seq = pyhmmer.easel.TextSequence(name=(entry["Read ID"].encode() + b"_" + str(possible_orf).encode()),
-                                                 sequence=str(protein))
+            aa_sequence = self._dna_to_aa(entry["inter_primer_sequence"], possible_orf)
+            text_seq = pyhmmer.easel.TextSequence(name=(str(entry["specimen_id"]).encode() + b"_" + str(possible_orf).encode()),
+                                                 sequence=str(aa_sequence))
             seqs[i] = text_seq
         return seqs
 
     def _process_trivial_orfs(self, chunk):
-
         chunk["orf_index"] = chunk.apply(
-            lambda x: x["orf_candidates"] if x["orf_candidates"] < 3 else x["orf_index"],
+            lambda x: x["orf_candidates"][0] if len(_decrypt_po(x["orf_candidates"])) == 1 else x["orf_index"],
+            axis=1)
+        chunk["orf_aa"] = chunk.apply(
+            lambda x: x["orf_aa"] if pd.isna(x["orf_index"]) else
+            self._dna_to_aa(x["inter_primer_sequence"], x["orf_index"]),
             axis=1)
         return chunk
 
+    def _dna_to_aa(self, dna_sequence, offset):
+        sequence = Seq(dna_sequence)[offset:]
+        trimmed = _trim_to_triplet(sequence)
+        translated = trimmed.translate(table=self.translation_table)
+        return str(translated)
 
 def _trim_to_triplet(sequence):
     remainder = len(sequence) % 3
     if remainder != 0:
         sequence = sequence[:-remainder]
     return sequence
+
+def _decrypt_po(possible_orf: int) -> list[int]:
+    return [i for i in range(possible_orf.bit_length()) if possible_orf & (1 << i)]

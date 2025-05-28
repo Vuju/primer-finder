@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from primer_finder.config.config_loader import get_config_loader
 from primer_finder.orf.finder import list_possible_orf
-from connectors import Connector
+from primer_finder.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 from primer_finder.matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
 from primer_finder.matching.regex import find_exact_match
