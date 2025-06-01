@@ -127,12 +127,18 @@ class OrfDecider:
                     break
 
             if not solved_this_iteration:
-                entry_id = current_entry['specimen_id'].loc
-                unsolved_related_species, _ = self.connector.fetch_unsolved_related_sequences(current_entry, 'taxon_species')
-                unsolvable_count = len(unsolved_related_species) # should be at least 1: the current entry itself.
-
-                logger.warning(f"Removing specimen '{entry_id}': a total of {unsolvable_count} members of their species to continue.")
+                entry_id = int(current_entry['specimen_id'].loc[0])
+                unsolved_related_species, has_any_related_cases = self.connector.fetch_unsolved_related_sequences(current_entry, 'taxon_species')
+                if has_any_related_cases:
+                    if entry_id not in unsolved_related_species['specimen_id'].values:
+                        unsolved_related_species = pd.concat([unsolved_related_species, current_entry], ignore_index=True)
+                else:
+                    unsolved_related_species = current_entry
+                unsolvable_count = len(unsolved_related_species)
+                logger.warning(
+                    f"Removing specimen '{entry_id}': a total of {unsolvable_count} members of their species to continue.")
                 unsolved_related_species["orf_index"] = -1
+                # how do I add the possibly missing current entry?
                 self.connector.write_pair_chunk(unsolved_related_species)
                 not_enough_references += unsolvable_count
 
@@ -147,60 +153,7 @@ class OrfDecider:
         logger.info(f"A total of {not_enough_references} entries did not have enough references to match.")
         logger.info(f"{failed} entries were not matched successfully.")
 
-    def solve_orfs_for_df(self, df: pd.DataFrame):
-        """
-        Takes a dataframe of sequences and attempts to solve all ambiguous orfs.
-
-        :param df: The dataframe of all sequences.
-
-        :return: all sequences with a definite or decided orf.
-        """
-        unsolved_results = df[~df['possible_orfs'].str.contains(r'\[\]')]
-        solved_results = unsolved_results[~unsolved_results['possible_orfs'].str.contains(',')]
-        unsolved_results = unsolved_results[~(unsolved_results["specimen_id"].isin(solved_results["specimen_id"]))]
-        solved_results["ORF"] = solved_results.apply(lambda x: x["possible_orfs"][1], axis=1)
-
-        not_enough_references = 0
-        failed = 0
-
-        self.progress_bar = tqdm(total=len(unsolved_results))
-        taxonomic_levels = ['Species', 'Genus', 'Family', 'Order', 'Class']
-
-        while unsolved_results.size > 0:
-            current_entry = unsolved_results.iloc[0]
-
-            # Try to match at each taxonomic level, from specific to general
-            for level in taxonomic_levels:
-                level_value = current_entry[level]
-                comparison_group = solved_results[solved_results[level] == level_value]
-                group_size = len(comparison_group)
-
-                if group_size >= self.lower_reference_threshold:
-                    comparison_group = comparison_group.sample(min(self.upper_reference_threshold, group_size))
-                    related_entries = unsolved_results[unsolved_results[level] == level_value]
-                    hmm = self._construct_hmm(comparison_group)
-                    solved = self._query_sequences_against_hmm(hmm, related_entries)
-                    failed += len(related_entries) - len(solved)
-                    solved_results = pd.concat([solved_results, solved], ignore_index=True)
-
-                    unsolved_results = unsolved_results[~(unsolved_results[level] == level_value)]
-                    break
-                else:
-                    # If we've tried all levels and none are big enough
-                    if level == taxonomic_levels[-1]:
-                        number_of_unsolvable_entries = len(solved_results[solved_results['Species'] == current_entry['Species']])
-                        logger.warning(f"Removing Species '{current_entry['Species']}' with {number_of_unsolvable_entries} members to continue.")
-                        unsolved_results = unsolved_results[~(unsolved_results['Species'] == current_entry['Species'])]
-                        not_enough_references += number_of_unsolvable_entries
-
-
-        self.progress_bar.close()
-        logger.info(f"A total of {not_enough_references} entries did not have enough references to match. {failed} were not matched successfully.")
-        return solved_results
-
-
     ## helper functions
-
     def _construct_hmm(self, reference_entries: pd.DataFrame) -> pyhmmer.plan7.HMM:
         """
         Takes a list of related sequences, aligns them with "muscle", and builds a HMM.
@@ -298,8 +251,6 @@ class OrfDecider:
                                                   ambiguous_entries.loc[
                                                       ambiguous_entries["specimen_id"] == int(read_id)].copy()],
                                                  ignore_index=True)
-            if self.progress_bar is not None:
-                self.progress_bar.update(1)
 
         return modified_entries
 
