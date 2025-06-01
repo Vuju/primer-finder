@@ -89,7 +89,7 @@ class OrfDecider:
         self.progress_bar.close()
         logger.info(f"Checked {self.trivial_counter} sequences for trivial cases.")
 
-        remaining_count = self.connector.get_remaining_unsolved_count()
+        remaining_count = self.connector.get_remaining_unsolved_count_and_setup_indexes()
         self.progress_bar = tqdm(total=remaining_count)
         taxonomic_levels = ['taxon_species', 'taxon_genus', 'taxon_family', 'taxon_order', 'taxon_class']
 
@@ -111,7 +111,7 @@ class OrfDecider:
 
                 if success:
                     hmm = self._construct_hmm(comparison_group)
-                    # todo: chunk process this:
+                    # todo: chunk process this: (although so far it doesn't seem problematic)
                     related_entries, _ = self.connector.fetch_unsolved_related_sequences(current_entry, level)
                     solved = self._query_sequences_against_hmm(hmm, related_entries)
 

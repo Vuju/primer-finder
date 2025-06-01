@@ -405,8 +405,27 @@ class DbConnector(Connector):
         finally:
             db.close()
 
-    def get_remaining_unsolved_count(self):
+    def get_remaining_unsolved_count_and_setup_indexes(self):
         db = sqlite3.connect(self.db_path)
+        db.execute("PRAGMA journal_mode=DELETE")
+        logger.info("Setting up indexes: Species")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_species2 ON specimen(specimenid, taxon_species)")
+        logger.info("Setting up indexes: Genus")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_genus2 ON specimen(specimenid, taxon_genus)")
+        logger.info("Setting up indexes: Family")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_family2 ON specimen(specimenid, taxon_family)")
+        logger.info("Setting up indexes: Order")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_order2 ON specimen(specimenid, taxon_order)")
+        logger.info("Setting up indexes: Class")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_class2 ON specimen(specimenid, taxon_class)")
+        logger.info("Setting up indexes: Primer Sequence")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_sequence2 ON primer_matches(primer_sequence)")
+        logger.info("Setting up indexes: Pair-Specimen ID")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_specimen ON primer_pairs(specimen_id)")
+        logger.info("Setting up indexes: sequence + id")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_primer_matches_sequence_id ON primer_matches(primer_sequence, match_id);")
+        logger.info("Setting up indexes: solved pairs")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_sequences_orf ON primer_pairs(forward_match_id, reverse_match_id, orf_index);")
         result = db.execute(f"""
                 SELECT COUNT(*) 
                 FROM primer_pairs
@@ -502,15 +521,18 @@ class DbConnector(Connector):
                 SELECT pp.forward_match_id, pp.reverse_match_id, pp.specimen_id,
                        pp.inter_primer_sequence, pp.orf_candidates, pp.orf_index, 
                        pp.orf_aa, pp.matching_flags
-                FROM primer_pairs pp
-                JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
-                JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
+                FROM (
+                    SELECT pp.*
+                    FROM primer_pairs pp
+                    JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
+                    JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id  
+                    WHERE fm.primer_sequence = ?
+                      AND rm.primer_sequence = ?
+                ) pp
                 JOIN specimen s ON pp.specimen_id = s.specimenid
-                WHERE fm.primer_sequence = ?
-                  AND rm.primer_sequence = ?
-                  AND s.{level} = ?
-                  AND pp.orf_index {"IS NOT NULL" if solved else "IS NULL"}
-                ORDER BY pp.specimen_id
+                WHERE s.{level} = ?
+                  AND pp.orf_index IS NOT NULL
+                ORDER BY pp.specimen_id;
                 """
 
             matching_entries = pd.read_sql_query(
