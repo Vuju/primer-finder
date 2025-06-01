@@ -7,7 +7,7 @@ from typing import Generator, Any
 import pandas as pd
 
 from primer_finder.config import get_config_loader
-from connectors.base import Connector
+from primer_finder.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
 logger = logging.getLogger(__name__)
@@ -239,7 +239,7 @@ class DbConnector(Connector):
         else:
             if backward_match.score < b_cutoff:
                 return -2
-            return 0
+        return 0
 
     def __init_db_connection(self):
         if not os.path.exists(self.db_path):
@@ -442,14 +442,15 @@ class DbConnector(Connector):
         if random_seed is not None:
             random.seed(random_seed)
 
-        matching_entries = self._fetch_related_sequences(current_entry, level, True)
-        if len(matching_entries) > lower_reference_threshold:
-            # Randomly sample up to max_entries from this group
-            sample_size = min(upper_reference_threshold, len(matching_entries))
-            selected_entries = matching_entries.sample(n=sample_size, axis=0, random_state=random_seed)
-            return selected_entries, True
-        else:
-            return None, False
+        matching_entries, found_sequences = self._fetch_related_sequences(current_entry, level, True)
+        if found_sequences:
+            filtered_entries  = matching_entries[(matching_entries["orf_index"] >= 0) & (matching_entries["matching_flags"] == 0)]
+            if len(filtered_entries) > lower_reference_threshold:
+                # Randomly sample up to max_entries from this group
+                sample_size = min(upper_reference_threshold, len(filtered_entries))
+                selected_entries = filtered_entries.sample(n=sample_size, axis=0, random_state=random_seed)
+                return selected_entries, True
+        return None, False
 
 
     def fetch_unsolved_related_sequences(self, current_entry, level):
@@ -508,7 +509,7 @@ class DbConnector(Connector):
                 WHERE fm.primer_sequence = ?
                   AND rm.primer_sequence = ?
                   AND s.{level} = ?
-                  {"AND pp.orf_index IS NOT NULL" if solved else ""}
+                  AND pp.orf_index {"IS NOT NULL" if solved else "IS NULL"}
                 ORDER BY pp.specimen_id
                 """
 
@@ -518,11 +519,11 @@ class DbConnector(Connector):
                 params=[forward_primer_seq, reverse_primer_seq, input_taxonomic_group],
             )
 
-            logger.info(f"Found {len(matching_entries)} related entries for {forward_primer_seq} and {reverse_primer_seq} in {input_taxonomic_group}")
-            return matching_entries
+            logger.info(f"Found {len(matching_entries)} related and {"solved" if solved else "unsolved"} entries for {forward_primer_seq} and {reverse_primer_seq} in {input_taxonomic_group}")
+            return matching_entries, True
 
         except Exception as e:
             logger.error(f"Error while finding related group for: {e}")
-            return None
+            return None, False
         finally:
             conn.close()

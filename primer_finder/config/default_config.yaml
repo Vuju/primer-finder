@@ -5,7 +5,7 @@ paths:
   primer_information: "./primer_finder/config/primer_information.csv"
   muscle: "/mnt/c/Users/Julian/bin/muscle"
   log_file: "primer-finder_log.log"
-  input_file: "/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini-2.db"
+  input_file: "/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini3.db"
   output_file: "./data/primer-finder-result-mini.csv" # only necessary if input is a fasta file.
 
 database:  # only necessary if input is a db file.
@@ -20,7 +20,7 @@ logging:
 # Feature toggles
 features:
   enable_primer_finder: false
-  enable_orf_finder: false
+  enable_orf_finder: true
 
 # Algorithm parameters
 algorithm:

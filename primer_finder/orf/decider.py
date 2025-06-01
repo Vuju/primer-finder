@@ -50,6 +50,7 @@ class OrfDecider:
         self.e_value_threshold = e_value_threshold or config["algorithm"]["e_value"]
         self.lower_reference_threshold = lower_reference_threshold or config["algorithm"]["orf_matching_lower_threshold"]
         self.upper_reference_threshold = upper_reference_threshold or config["algorithm"]["orf_matching_upper_threshold"]
+        self.trivial_counter = 0
 
     def solve_all_orfs(self):
         # chunk-wise iterate over all primer pairs and set trivial ones.
@@ -68,27 +69,28 @@ class OrfDecider:
         Process and solve all ORFs using the provided connector for data operations.
         """
         # Statistics tracking
-        total_processed = 0
-        trivially_solved = 0
         hmm_solved = 0
         not_enough_references = 0
         failed = 0
 
         # Process trivial cases first in chunks
-        # chunk_generator = self.connector.read_pairs_chunk(self.chunk_size)
-        # for chunk in chunk_generator:
-        #     solved = self._process_trivial_orfs(chunk)
-        #     trivially_solved += len(solved)
-        #     total_processed += len(chunk)
-        #     if not solved.empty:
-        #         # todo possibly collect for fewer writes
-        #         self.connector.write_pair_chunk(solved)
-        #
-        # logger.info(f"Processed {total_processed} sequences. Trivially solved: {trivially_solved}")
+        # todo: get a correct number here
+        count = self.connector.get_number_of_sequences()
+        self.progress_bar = tqdm(total=count)
+
+        chunk_generator = self.connector.read_pairs_chunk(self.chunk_size)
+        for chunk in chunk_generator:
+            solved = self._process_trivial_orfs(chunk)
+            if not solved.empty:
+                # todo possibly collect for fewer writes
+                self.connector.write_pair_chunk(solved)
+                self.progress_bar.update(len(solved))
+
+        self.progress_bar.close()
+        logger.info(f"Checked {self.trivial_counter} sequences for trivial cases.")
 
         remaining_count = self.connector.get_remaining_unsolved_count()
         self.progress_bar = tqdm(total=remaining_count)
-
         taxonomic_levels = ['taxon_species', 'taxon_genus', 'taxon_family', 'taxon_order', 'taxon_class']
 
         # Process non-trivial cases using HMM
@@ -110,7 +112,7 @@ class OrfDecider:
                 if success:
                     hmm = self._construct_hmm(comparison_group)
                     # todo: chunk process this:
-                    related_entries = self.connector.fetch_unsolved_related_sequences(current_entry, level)
+                    related_entries, _ = self.connector.fetch_unsolved_related_sequences(current_entry, level)
                     solved = self._query_sequences_against_hmm(hmm, related_entries)
 
                     hmm_solved += len(solved)
@@ -125,11 +127,13 @@ class OrfDecider:
                     break
 
             if not solved_this_iteration:
-                entry_id = current_entry['specimen_id']
-                unsolved_related_species = self.connector.fetch_unsolved_related_sequences(current_entry, 'taxon_species')
-                unsolvable_count = len(unsolved_related_species)
+                entry_id = current_entry['specimen_id'].loc
+                unsolved_related_species, _ = self.connector.fetch_unsolved_related_sequences(current_entry, 'taxon_species')
+                unsolvable_count = len(unsolved_related_species) # should be at least 1: the current entry itself.
 
-                logger.warning(f"Removing Species '{entry_id}' and {unsolvable_count} members of the same species to continue.")
+                logger.warning(f"Removing specimen '{entry_id}': a total of {unsolvable_count} members of their species to continue.")
+                unsolved_related_species["orf_index"] = -1
+                self.connector.write_pair_chunk(unsolved_related_species)
                 not_enough_references += unsolvable_count
 
                 # Update progress bar
@@ -284,7 +288,16 @@ class OrfDecider:
                                                   ambiguous_entries.loc[
                                                       ambiguous_entries["specimen_id"] == int(read_id)].copy()],
                                                  ignore_index=True)
-
+            else:
+                # store -1 as failed flag if there is no match
+                print(f"marking stuff as unsolvable: {query[0].name.decode()}")
+                read_id, _ = query[0].name.decode().split("_")
+                ambiguous_entries.loc[ambiguous_entries["specimen_id"] == int(read_id), 'orf_index'] = -1
+                if len(modified_entries[modified_entries["specimen_id"] == int(read_id)]) == 0:
+                    modified_entries = pd.concat([modified_entries,
+                                                  ambiguous_entries.loc[
+                                                      ambiguous_entries["specimen_id"] == int(read_id)].copy()],
+                                                 ignore_index=True)
             if self.progress_bar is not None:
                 self.progress_bar.update(1)
 
@@ -296,7 +309,7 @@ class OrfDecider:
         return text_seq
 
     def _get_possible_amino_text_sequences_of(self, entry: pd.Series):
-        possible_orfs = _decrypt_po(entry["orf_candidates"])
+        possible_orfs = _decrypt_oc(entry["orf_candidates"])
         seqs = np.zeros(shape=3, dtype=pyhmmer.easel.TextSequence)
         seqs.fill(pyhmmer.easel.TextSequence("".encode(), sequence=""))
         for i, possible_orf in enumerate(possible_orfs):
@@ -307,17 +320,31 @@ class OrfDecider:
         return seqs
 
     def _process_trivial_orfs(self, chunk):
-        chunk["orf_index"] = chunk.apply(
-            lambda x: x["orf_candidates"][0] if len(_decrypt_po(x["orf_candidates"])) == 1 else x["orf_index"],
-            axis=1)
-        chunk["orf_aa"] = chunk.apply(
-            lambda x: x["orf_aa"] if pd.isna(x["orf_index"]) else
-            self._dna_to_aa(x["inter_primer_sequence"], x["orf_index"]),
-            axis=1)
+        chunk["orf_index"] = chunk.apply(lambda x: self.__set_trivial_orf_index(x), axis=1)
+        chunk["orf_aa"] = chunk.apply(lambda x: self.__set_trivial_orf_aa(x), axis=1)
         return chunk
 
+
+    def __set_trivial_orf_index(self, entry: pd.Series):
+        possible_orfs = _decrypt_oc(int(entry["orf_candidates"]))
+        self.trivial_counter += 1
+        if len(possible_orfs) == 1:
+            return possible_orfs[0]
+        if len(possible_orfs) == 0:
+            return -1
+        else:
+            return entry["orf_index"]
+
+    def __set_trivial_orf_aa(self, entry: pd.Series):
+        if pd.isna(entry["orf_index"]):
+            return entry["orf_aa"]
+        elif entry["orf_index"] == -1:
+            return ""
+        else:
+            return self._dna_to_aa(entry["inter_primer_sequence"], entry["orf_index"])
+
     def _dna_to_aa(self, dna_sequence, offset):
-        sequence = Seq(dna_sequence)[offset:]
+        sequence = Seq(dna_sequence)[int(offset):]
         trimmed = _trim_to_triplet(sequence)
         translated = trimmed.translate(table=self.translation_table)
         return str(translated)
@@ -328,5 +355,8 @@ def _trim_to_triplet(sequence):
         sequence = sequence[:-remainder]
     return sequence
 
-def _decrypt_po(possible_orf: int) -> list[int]:
+def _decrypt_oc(possible_orf: int) -> list[int]:
     return [i for i in range(possible_orf.bit_length()) if possible_orf & (1 << i)]
+
+
+
