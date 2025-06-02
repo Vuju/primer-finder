@@ -235,7 +235,7 @@ class OrfDecider:
             else:
                 # store -1 as failed flag if there is no match
                 name = query[0].name.decode()
-                print(f"marking stuff as unsolvable: {name}")
+                # print(f"marking stuff as unsolvable: {name}")
                 if name:
                     read_id, _ = name.split("_")
                     ambiguous_entries.loc[ambiguous_entries["specimen_id"] == int(read_id), 'orf_index'] = -1
