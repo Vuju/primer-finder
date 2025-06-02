@@ -20,7 +20,7 @@ logging:
 # Feature toggles
 features:
   enable_primer_finder: false
-  enable_orf_finder: true
+  enable_orf_finder: false
 
 # Algorithm parameters
 algorithm:
