@@ -50,21 +50,11 @@ class OrfDecider:
         self.e_value_threshold = e_value_threshold or config["algorithm"]["e_value"]
         self.lower_reference_threshold = lower_reference_threshold or config["algorithm"]["orf_matching_lower_threshold"]
         self.upper_reference_threshold = upper_reference_threshold or config["algorithm"]["orf_matching_upper_threshold"]
+
         self.trivial_counter = 0
+        self.cases_for_which_empty_query_was_created = 0
 
     def solve_all_orfs(self):
-        # chunk-wise iterate over all primer pairs and set trivial ones.
-        # connector: read chunk
-        # for seq in chunk:
-        # check if trivial
-        # prepare writeback if trivial
-        # connector: writeback chunk
-        # connector: while next exists: get the next open sequence
-        # connector: search for a sufficient comparison group
-        # build hmm
-        # connector: fetch batch of related sequences
-        # query chunk of sequences against hmm
-        # connector: writeback results
         """
         Process and solve all ORFs using the provided connector for data operations.
         """
@@ -87,7 +77,7 @@ class OrfDecider:
                 self.progress_bar.update(len(solved))
 
         self.progress_bar.close()
-        logger.info(f"Checked {self.trivial_counter} sequences for trivial cases.")
+        logger.info(f"Solved {self.trivial_counter} sequences with trivial cases.")
 
         remaining_count = self.connector.get_remaining_unsolved_count_and_setup_indexes()
         self.progress_bar = tqdm(total=remaining_count)
@@ -152,6 +142,7 @@ class OrfDecider:
         logger.info(f"HMM solved: {hmm_solved}")
         logger.info(f"A total of {not_enough_references} entries did not have enough references to match.")
         logger.info(f"{failed} entries were not matched successfully.")
+        logger.info(f"A total of {self.cases_for_which_empty_query_was_created} cases were dropped because of an empty query.")
 
     ## helper functions
     def _construct_hmm(self, reference_entries: pd.DataFrame) -> pyhmmer.plan7.HMM:
@@ -243,14 +234,18 @@ class OrfDecider:
                                                  ignore_index=True)
             else:
                 # store -1 as failed flag if there is no match
-                print(f"marking stuff as unsolvable: {query[0].name.decode()}")
-                read_id, _ = query[0].name.decode().split("_")
-                ambiguous_entries.loc[ambiguous_entries["specimen_id"] == int(read_id), 'orf_index'] = -1
-                if len(modified_entries[modified_entries["specimen_id"] == int(read_id)]) == 0:
-                    modified_entries = pd.concat([modified_entries,
-                                                  ambiguous_entries.loc[
-                                                      ambiguous_entries["specimen_id"] == int(read_id)].copy()],
-                                                 ignore_index=True)
+                name = query[0].name.decode()
+                print(f"marking stuff as unsolvable: {name}")
+                if name:
+                    read_id, _ = name.split("_")
+                    ambiguous_entries.loc[ambiguous_entries["specimen_id"] == int(read_id), 'orf_index'] = -1
+                    if len(modified_entries[modified_entries["specimen_id"] == int(read_id)]) == 0:
+                        modified_entries = pd.concat([modified_entries,
+                                                      ambiguous_entries.loc[
+                                                          ambiguous_entries["specimen_id"] == int(read_id)].copy()],
+                                                     ignore_index=True)
+                else:
+                    self.cases_for_which_empty_query_was_created += 1
 
         return modified_entries
 
@@ -278,10 +273,11 @@ class OrfDecider:
 
     def __set_trivial_orf_index(self, entry: pd.Series):
         possible_orfs = _decrypt_oc(int(entry["orf_candidates"]))
-        self.trivial_counter += 1
         if len(possible_orfs) == 1:
+            self.trivial_counter += 1
             return possible_orfs[0]
         if len(possible_orfs) == 0:
+            self.trivial_counter += 1
             return -1
         else:
             return entry["orf_index"]

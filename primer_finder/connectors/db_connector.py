@@ -377,27 +377,25 @@ class DbConnector(Connector):
 
     def write_pair_chunk(self, solved):
         db = sqlite3.connect(self.db_path)
-        db.execute('PRAGMA synchronous = NORMAL')
-        db.execute('PRAGMA journal_mode=WAL')
-        db.execute('PRAGMA journal_size_limit = 0')
-        db.execute('PRAGMA cache_size = -2000')
+        db.execute("PRAGMA journal_mode = WAL")
         db.execute('PRAGMA temp_store = MEMORY')
         try:
-            db.execute("BEGIN TRANSACTION")
-            # Convert DataFrame to list of tuples
-            data_tuples = [tuple(row) for row in solved.itertuples(index=False, name=None)]
-
             # Use INSERT OR REPLACE to handle conflicts
             insert_query = '''
-            INSERT OR REPLACE INTO primer_pairs 
-            (forward_match_id, reverse_match_id, specimen_id, inter_primer_sequence, 
-             orf_candidates, orf_index, orf_aa, matching_flags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            UPDATE primer_pairs 
+            SET orf_index = ?, 
+                orf_aa = ?
+            WHERE forward_match_id = ? 
+              AND reverse_match_id = ?
             '''
 
+            # Convert DataFrame to list of tuples
+            update_data = solved[['orf_index', 'orf_aa', 'forward_match_id', 'reverse_match_id']]
+            data_tuples = [tuple(row) for row in update_data.itertuples(index=False, name=None)]
+
+            db.execute("BEGIN TRANSACTION")
             db.executemany(insert_query, data_tuples)
             db.commit()
-            db.close()
         except Exception as e:
             logger.error(f"Failed to write primer pair data: {str(e)}")
             db.execute("ROLLBACK")
@@ -407,25 +405,24 @@ class DbConnector(Connector):
 
     def get_remaining_unsolved_count_and_setup_indexes(self):
         db = sqlite3.connect(self.db_path)
-        db.execute("PRAGMA journal_mode=DELETE")
-        logger.info("Setting up indexes: Species")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_species2 ON specimen(specimenid, taxon_species)")
-        logger.info("Setting up indexes: Genus")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_genus2 ON specimen(specimenid, taxon_genus)")
-        logger.info("Setting up indexes: Family")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_family2 ON specimen(specimenid, taxon_family)")
-        logger.info("Setting up indexes: Order")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_order2 ON specimen(specimenid, taxon_order)")
-        logger.info("Setting up indexes: Class")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_class2 ON specimen(specimenid, taxon_class)")
-        logger.info("Setting up indexes: Primer Sequence")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_sequence2 ON primer_matches(primer_sequence)")
-        logger.info("Setting up indexes: Pair-Specimen ID")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_specimen ON primer_pairs(specimen_id)")
-        logger.info("Setting up indexes: sequence + id")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_primer_matches_sequence_id ON primer_matches(primer_sequence, match_id);")
-        logger.info("Setting up indexes: solved pairs")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_sequences_orf ON primer_pairs(forward_match_id, reverse_match_id, orf_index);")
+        # logger.info("Setting up indexes: Species")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_species2 ON specimen(specimenid, taxon_species)")
+        # logger.info("Setting up indexes: Genus")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_genus2 ON specimen(specimenid, taxon_genus)")
+        # logger.info("Setting up indexes: Family")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_family2 ON specimen(specimenid, taxon_family)")
+        # logger.info("Setting up indexes: Order")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_order2 ON specimen(specimenid, taxon_order)")
+        # logger.info("Setting up indexes: Class")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_class2 ON specimen(specimenid, taxon_class)")
+        # logger.info("Setting up indexes: Primer Sequence")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_sequence2 ON primer_matches(primer_sequence)")
+        # logger.info("Setting up indexes: Pair-Specimen ID")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_specimen ON primer_pairs(specimen_id)")
+        # logger.info("Setting up indexes: sequence + id")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_primer_matches_sequence_id ON primer_matches(primer_sequence, match_id);")
+        # logger.info("Setting up indexes: solved pairs")
+        # db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_sequences_orf ON primer_pairs(forward_match_id, reverse_match_id, orf_index);")
         result = db.execute(f"""
                 SELECT COUNT(*) 
                 FROM primer_pairs
@@ -531,7 +528,7 @@ class DbConnector(Connector):
                 ) pp
                 JOIN specimen s ON pp.specimen_id = s.specimenid
                 WHERE s.{level} = ?
-                  AND pp.orf_index IS NOT NULL
+                  AND pp.orf_index {"IS NOT NULL" if solved else "IS NULL"}
                 ORDER BY pp.specimen_id;
                 """
 
