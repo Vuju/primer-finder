@@ -58,6 +58,23 @@ class OrfDecider:
         """
         Process and solve all ORFs using the provided connector for data operations.
         """
+        # todo:
+        # 1. figure out which primer pairs we are dealing with
+        # 2. build new table based on that:
+        #     """CREATE TABLE primer_taxonomic_groups AS
+        #     SELECT pp.*, s.taxon_genus, s.taxon_species, s.taxon_family, s.taxon_order, s.taxon_class,
+        #            fm.primer_sequence as forward_seq, rm.primer_sequence as reverse_seq
+        #     FROM primer_pairs pp
+        #     JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
+        #     JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
+        #     JOIN specimen s ON pp.specimen_id = s.specimenid;
+        #     WHERE fm.primer_sequence = ?
+        #     AND rm.primer_sequence = ?"""
+        # 3. rework read and write to work on new table
+        # 4. write back to the original table
+        # 5. clean up
+
+
         # Statistics tracking
         hmm_solved = 0
         not_enough_references = 0
