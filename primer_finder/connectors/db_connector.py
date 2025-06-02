@@ -538,7 +538,7 @@ class DbConnector(Connector):
                 params=[forward_primer_seq, reverse_primer_seq, input_taxonomic_group],
             )
 
-            logger.info(f"Found {len(matching_entries)} related and {"solved" if solved else "unsolved"} entries for {forward_primer_seq} and {reverse_primer_seq} in {input_taxonomic_group}")
+            # logger.info(f"Found {len(matching_entries)} related and {"solved" if solved else "unsolved"} entries for {forward_primer_seq} and {reverse_primer_seq} in {input_taxonomic_group}")
             return matching_entries, True
 
         except Exception as e:
