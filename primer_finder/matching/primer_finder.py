@@ -4,11 +4,11 @@ from multiprocessing import Pool, Lock
 
 from tqdm import tqdm
 
-from primer_finder.config.config_loader import get_config_loader
+from primer_finder.config.config_loader import get_config_loader, get_primer_information
 from primer_finder.orf.finder import list_possible_orf
 from primer_finder.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
-from primer_finder.matching.dtos.primer_data_dto import PrimerDataDTO, primer_info_from_string
+from primer_finder.matching.dtos.primer_data_dto import PrimerDataDTO
 from primer_finder.matching.regex import find_exact_match
 from primer_finder.matching.smith_waterman import SmithWaterman
 
@@ -60,7 +60,7 @@ class PrimerFinder:
         """
         Executes the primer finder algorithm with the set configuration.
         """
-        self._get_primer_information()
+        get_primer_information(self.primer_information_file, self.primer_data)
         _lock = Lock()
 
         logger.info("Getting the number of sequences.")
@@ -155,12 +155,6 @@ class PrimerFinder:
             possible_orfs = ([]) if len(possible_orfs) == 0 else possible_orfs
 
         return sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs
-
-    def _get_primer_information(self):
-        with open(self.primer_information_file, "r") as primer_info_file:
-            for line in primer_info_file.readlines():
-                entry = primer_info_from_string(line)
-                self.primer_data.append(entry)
 
     def _compute_regex_match(self, primer, primer_regex, read):
         score = 0

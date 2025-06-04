@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
+from primer_finder.matching.dtos.primer_data_dto import primer_info_from_string, PrimerDataDTO
+
 # Type alias for configuration
 Config = Dict[str, Any]
 
@@ -214,3 +216,10 @@ def get_config_loader(config_path: Optional[Union[str, Path]] = None) -> ConfigL
     if _config_loader is None or config_path is not None:
         _config_loader = ConfigLoader(config_path)
     return _config_loader
+
+
+def get_primer_information(primer_information_file, primer_data):
+    with open(primer_information_file, "r") as primer_info_file:
+        for line in primer_info_file.readlines():
+            entry = primer_info_from_string(line)
+            primer_data.append(entry)

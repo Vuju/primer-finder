@@ -53,7 +53,7 @@ class Connector(ABC):
         pass
 
     @abstractmethod
-    def get_remaining_unsolved_count_and_setup_indexes(self):
+    def get_remaining_unsolved_count(self):
         """
         Returns the number of unsolved entries in the primer-pairs table.
         :return:
@@ -89,3 +89,16 @@ class Connector(ABC):
         :return:
         """
         pass
+
+    @abstractmethod
+    def init_temp_pairs_table(self, forward_primer_seq, reverse_primer_seq):
+        pass
+
+    @abstractmethod
+    def primer_pairs_writeback(self):
+        pass
+    
+    @abstractmethod
+    def remove_temp_table(self):
+        pass
+

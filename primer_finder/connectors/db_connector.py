@@ -359,7 +359,7 @@ class DbConnector(Connector):
         query = f"""
                 SELECT forward_match_id, reverse_match_id, specimen_id, inter_primer_sequence, 
                 orf_candidates, orf_index, orf_aa, matching_flags
-                FROM primer_pairs                
+                FROM primer_taxonomic_groups                
                 """
         offset = 0
         db = sqlite3.connect(self.db_path)
@@ -375,14 +375,14 @@ class DbConnector(Connector):
             yield df
         db.close()
 
-    def write_pair_chunk(self, solved):
+    def write_pair_chunk(self, solved, tmp = True):
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode = WAL")
         db.execute('PRAGMA temp_store = MEMORY')
         try:
             # Use INSERT OR REPLACE to handle conflicts
-            insert_query = '''
-            UPDATE primer_pairs 
+            insert_query = f'''
+            UPDATE {"primer_taxonomic_groups" if tmp else "primer_pairs"}
             SET orf_index = ?, 
                 orf_aa = ?
             WHERE forward_match_id = ? 
@@ -403,29 +403,11 @@ class DbConnector(Connector):
         finally:
             db.close()
 
-    def get_remaining_unsolved_count_and_setup_indexes(self):
+    def get_remaining_unsolved_count(self):
         db = sqlite3.connect(self.db_path)
-        # logger.info("Setting up indexes: Species")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_species2 ON specimen(specimenid, taxon_species)")
-        # logger.info("Setting up indexes: Genus")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_genus2 ON specimen(specimenid, taxon_genus)")
-        # logger.info("Setting up indexes: Family")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_family2 ON specimen(specimenid, taxon_family)")
-        # logger.info("Setting up indexes: Order")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_order2 ON specimen(specimenid, taxon_order)")
-        # logger.info("Setting up indexes: Class")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_class2 ON specimen(specimenid, taxon_class)")
-        # logger.info("Setting up indexes: Primer Sequence")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_sequence2 ON primer_matches(primer_sequence)")
-        # logger.info("Setting up indexes: Pair-Specimen ID")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_specimen ON primer_pairs(specimen_id)")
-        # logger.info("Setting up indexes: sequence + id")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_primer_matches_sequence_id ON primer_matches(primer_sequence, match_id);")
-        # logger.info("Setting up indexes: solved pairs")
-        # db.execute("CREATE INDEX IF NOT EXISTS idx_primer_pairs_sequences_orf ON primer_pairs(forward_match_id, reverse_match_id, orf_index);")
         result = db.execute(f"""
                 SELECT COUNT(*) 
-                FROM primer_pairs
+                FROM primer_taxonomic_groups
                 WHERE orf_index IS NULL
                 """)
         return result.fetchone()[0]
@@ -434,15 +416,8 @@ class DbConnector(Connector):
         db = sqlite3.connect(self.db_path)
         try:
             query = """
-                    SELECT forward_match_id,
-                           reverse_match_id,
-                           specimen_id,
-                           inter_primer_sequence,
-                           orf_candidates,
-                           orf_index,
-                           orf_aa,
-                           matching_flags
-                    FROM primer_pairs
+                    SELECT *
+                    FROM primer_taxonomic_groups
                     WHERE orf_index IS NULL
                     LIMIT 1
                     """
@@ -458,7 +433,7 @@ class DbConnector(Connector):
         if random_seed is not None:
             random.seed(random_seed)
 
-        matching_entries, found_sequences = self._fetch_related_sequences(current_entry, level, True)
+        matching_entries, found_sequences = self._fetch_any_related_sequences(current_entry, level, True)
         if found_sequences:
             filtered_entries  = matching_entries[(matching_entries["orf_index"] >= 0) & (matching_entries["matching_flags"] == 0)]
             if len(filtered_entries) > lower_reference_threshold:
@@ -470,75 +445,65 @@ class DbConnector(Connector):
 
 
     def fetch_unsolved_related_sequences(self, current_entry, level):
-        return self._fetch_related_sequences(current_entry, level, False)
+        return self._fetch_any_related_sequences(current_entry, level, False)
 
-    def _fetch_related_sequences(self, current_entry, level, solved: bool):
+    def init_temp_pairs_table(self, forward_primer_seq, reverse_primer_seq):
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        # self.remove_temp_table()
+        creation_query = f"""
+            CREATE TABLE IF NOT EXISTS primer_taxonomic_groups AS
+            SELECT pp.*, s.taxon_genus, s.taxon_species, s.taxon_family, s.taxon_order, s.taxon_class,
+                   fm.primer_sequence as forward_seq, rm.primer_sequence as reverse_seq
+            FROM primer_pairs pp
+            JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
+            JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
+            JOIN specimen s ON pp.specimen_id = s.specimenid
+            WHERE fm.primer_sequence = ?
+            AND rm.primer_sequence = ?;
+            """
+        logger.info(f"Creating temp pairs table for {forward_primer_seq} and {reverse_primer_seq}. This may take a while.")
+        conn.execute(creation_query,(forward_primer_seq, reverse_primer_seq))
+        logger.info("Finished creating temp pairs table. Creating indexes.")
 
+        logger.info("Setting up indexes: Orf Index (1/7)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sequence ON primer_taxonomic_groups(orf_index)")
+        logger.info("Setting up indexes: Species (2/7)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_species ON primer_taxonomic_groups(taxon_species)")
+        logger.info("Setting up indexes: Genus (3/7)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_genus ON primer_taxonomic_groups(taxon_genus)")
+        logger.info("Setting up indexes: Family (4/7)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_family ON primer_taxonomic_groups(taxon_family)")
+        logger.info("Setting up indexes: Order (5/7)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_order ON primer_taxonomic_groups(taxon_order)")
+        logger.info("Setting up indexes: Class (6/7)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_class ON primer_taxonomic_groups(taxon_class)")
+        logger.info("Setting up indexes: Orf Index (7/7)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_match_ids ON primer_taxonomic_groups(forward_match_id, reverse_match_id)")
+        logger.info("Finished setting up indexes.")
+        conn.close()
+
+    def remove_temp_table(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("DROP TABLE primer_taxonomic_groups")
+        conn.close()
+
+    def _fetch_any_related_sequences(self, current_entry, level, solved: bool):
+        conn = sqlite3.connect(self.db_path)
         try:
-            cursor = conn.cursor()
-
-            # First, get the primer sequences from the input primer pair
-            primer_lookup_query = """
-                                  SELECT fm.primer_sequence as forward_primer,
-                                         rm.primer_sequence as reverse_primer,
-                                         s.specimenid       as input_specimen_id,
-                                         s.*
-                                  FROM primer_pairs pp
-                                           LEFT JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
-                                           LEFT JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
-                                           LEFT JOIN specimen s ON pp.specimen_id = s.specimenid
-                                  WHERE pp.forward_match_id = ?
-                                    AND pp.reverse_match_id = ?
-                                  """
-
-            f_id = int(current_entry["forward_match_id"].iloc[0])
-            b_id = int(current_entry["reverse_match_id"].iloc[0])
-
-            cursor.execute(primer_lookup_query, (f_id, b_id))
-            input_primer_info = cursor.fetchone()
-
-            if not input_primer_info:
-                logger.error(
-                    f"No primer pair found with forward_match_id={f_id}, "
-                    f"reverse_match_id={b_id}")
-                return None, False
-
-            forward_primer_seq = input_primer_info['forward_primer']
-            reverse_primer_seq = input_primer_info['reverse_primer']
-            input_taxonomic_group = input_primer_info[level]
-
-            if not input_taxonomic_group:
-                logger.error(f"Input specimen has no {level} information")
-                return None, False
-
-            # Find all primer pairs with the same primer sequences in the same taxonomic group that are solved
-            discovery_query = f"""
-                SELECT pp.forward_match_id, pp.reverse_match_id, pp.specimen_id,
-                       pp.inter_primer_sequence, pp.orf_candidates, pp.orf_index, 
-                       pp.orf_aa, pp.matching_flags
-                FROM (
-                    SELECT pp.*
-                    FROM primer_pairs pp
-                    JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
-                    JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id  
-                    WHERE fm.primer_sequence = ?
-                      AND rm.primer_sequence = ?
-                ) pp
-                JOIN specimen s ON pp.specimen_id = s.specimenid
-                WHERE s.{level} = ?
-                  AND pp.orf_index {"IS NOT NULL" if solved else "IS NULL"}
-                ORDER BY pp.specimen_id;
+            related_query = f"""
+                SELECT forward_match_id, reverse_match_id, specimen_id,
+                       inter_primer_sequence, orf_candidates, orf_index, 
+                       orf_aa, matching_flags
+                FROM primer_taxonomic_groups
+                WHERE {level} = ?
+                AND orf_index {"IS NOT NULL" if solved else "IS NULL"}
                 """
-
             matching_entries = pd.read_sql_query(
-                sql=discovery_query,
+                sql=related_query,
                 con=conn,
-                params=[forward_primer_seq, reverse_primer_seq, input_taxonomic_group],
+                params=[current_entry[level][0]],
             )
-
-            # logger.info(f"Found {len(matching_entries)} related and {"solved" if solved else "unsolved"} entries for {forward_primer_seq} and {reverse_primer_seq} in {input_taxonomic_group}")
+            #logger.info(f"Found {len(matching_entries)} related and {"solved" if solved else "unsolved"} entries in {current_entry[level][0]}")
             return matching_entries, True
 
         except Exception as e:
@@ -546,3 +511,16 @@ class DbConnector(Connector):
             return None, False
         finally:
             conn.close()
+
+    def primer_pairs_writeback(self):
+        conn = sqlite3.connect(self.db_path)
+        writeback_query = """
+        UPDATE primer_pairs
+        SET orf_index = ptg.orf_index,
+            orf_aa = ptg.orf_aa
+        FROM primer_taxonomic_groups ptg
+        WHERE primer_pairs.forward_match_id = ptg.forward_match_id
+          AND primer_pairs.reverse_match_id = ptg.reverse_match_id
+        """
+        conn.execute(writeback_query)
+        conn.close()

@@ -10,7 +10,7 @@ from Bio.Seq import Seq
 from tqdm import tqdm
 
 from primer_finder.connectors.base import Connector
-from primer_finder.config.config_loader import get_config_loader
+from primer_finder.config.config_loader import get_config_loader, get_primer_information
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ class OrfDecider:
                  chunk_size: int = None,
                  translation_table = None,
                  muscle_path = None,
+                 primer_path = None,
                  e_value_threshold = None,
                  lower_reference_threshold: int = None,
                  upper_reference_threshold: int = None,
@@ -46,11 +47,13 @@ class OrfDecider:
         config = get_config_loader().get_config()
         self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
         self.muscle_path = muscle_path or config["paths"]["muscle"]
+        self.primer_information_file = primer_path or config["paths"]["primer_information"]
         self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
         self.e_value_threshold = e_value_threshold or config["algorithm"]["e_value"]
         self.lower_reference_threshold = lower_reference_threshold or config["algorithm"]["orf_matching_lower_threshold"]
         self.upper_reference_threshold = upper_reference_threshold or config["algorithm"]["orf_matching_upper_threshold"]
 
+        self.primer_data = []
         self.trivial_counter = 0
         self.cases_for_which_empty_query_was_created = 0
 
@@ -74,92 +77,104 @@ class OrfDecider:
         # 4. write back to the original table
         # 5. clean up
 
+        get_primer_information(self.primer_information_file, self.primer_data)
 
-        # Statistics tracking
-        hmm_solved = 0
-        not_enough_references = 0
-        failed = 0
+        for primer_datum in self.primer_data:
+            # Statistics tracking
+            self.trivial_counter = 0
+            self.cases_for_which_empty_query_was_created = 0
+            hmm_solved = 0
+            not_enough_references = 0
+            failed = 0
 
-        # Process trivial cases first in chunks
-        # todo: get a correct number here
-        count = self.connector.get_number_of_sequences()
-        self.progress_bar = tqdm(total=count)
+            logger.info(f"Solving orfs for {primer_datum.forward_primer} and {primer_datum.backward_primer}.")
+            self.connector.init_temp_pairs_table(primer_datum.forward_primer, primer_datum.backward_primer)
 
-        chunk_generator = self.connector.read_pairs_chunk(self.chunk_size)
-        for chunk in chunk_generator:
-            solved = self._process_trivial_orfs(chunk)
-            if not solved.empty:
-                # todo possibly collect for fewer writes
-                self.connector.write_pair_chunk(solved)
-                self.progress_bar.update(len(solved))
+            count = self.connector.get_number_of_sequences()
+            # while this gets the number of specimen, this should be equal as there should be 1 pp per spec
+            logger.info("Solving trivial orf decisions:")
+            self.progress_bar = tqdm(total=count)
 
-        self.progress_bar.close()
-        logger.info(f"Solved {self.trivial_counter} sequences with trivial cases.")
+            chunk_generator = self.connector.read_pairs_chunk(self.chunk_size)
+            for chunk in chunk_generator:
+                solved = self._process_trivial_orfs(chunk)
+                if not solved.empty:
+                    # todo possibly collect for fewer writes
+                    self.connector.write_pair_chunk(solved)
+                    self.progress_bar.update(len(solved))
 
-        remaining_count = self.connector.get_remaining_unsolved_count_and_setup_indexes()
-        self.progress_bar = tqdm(total=remaining_count)
-        taxonomic_levels = ['taxon_species', 'taxon_genus', 'taxon_family', 'taxon_order', 'taxon_class']
+            self.progress_bar.close()
+            logger.info(f"Solved {self.trivial_counter} sequences with trivial cases.")
+            logger.info("Solving complex cases with HMMs:")
+            remaining_count = self.connector.get_remaining_unsolved_count()
+            self.progress_bar = tqdm(total=remaining_count)
+            taxonomic_levels = ['taxon_species', 'taxon_genus', 'taxon_family', 'taxon_order', 'taxon_class']
 
-        # Process non-trivial cases using HMM
-        while True:
-            current_entry = self.connector.get_next_unsolved_sequence()
-            if current_entry is None:
-                break
-
-            solved_this_iteration = False
-
-            for level in taxonomic_levels:
-                comparison_group, success = self.connector.fetch_sampled_solved_related_sequences(
-                    current_entry,
-                    level,
-                    self.lower_reference_threshold,
-                    self.upper_reference_threshold
-                )
-
-                if success:
-                    hmm = self._construct_hmm(comparison_group)
-                    # todo: chunk process this: (although so far it doesn't seem problematic)
-                    related_entries, _ = self.connector.fetch_unsolved_related_sequences(current_entry, level)
-                    solved = self._query_sequences_against_hmm(hmm, related_entries)
-
-                    hmm_solved += len(solved)
-                    failed += len(related_entries) - len(solved)
-                    if self.progress_bar:
-                        self.progress_bar.update(len(related_entries))
-
-                    if not solved.empty:
-                        self.connector.write_pair_chunk(solved)
-
-                    solved_this_iteration = True
+            # Process non-trivial cases using HMM
+            while True:
+                current_entry = self.connector.get_next_unsolved_sequence()
+                if current_entry.empty:
                     break
 
-            if not solved_this_iteration:
-                entry_id = int(current_entry['specimen_id'].loc[0])
-                unsolved_related_species, has_any_related_cases = self.connector.fetch_unsolved_related_sequences(current_entry, 'taxon_species')
-                if has_any_related_cases:
-                    if entry_id not in unsolved_related_species['specimen_id'].values:
-                        unsolved_related_species = pd.concat([unsolved_related_species, current_entry], ignore_index=True)
-                else:
-                    unsolved_related_species = current_entry
-                unsolvable_count = len(unsolved_related_species)
-                logger.warning(
-                    f"Removing specimen '{entry_id}': a total of {unsolvable_count} members of their species to continue.")
-                unsolved_related_species["orf_index"] = -1
-                # how do I add the possibly missing current entry?
-                self.connector.write_pair_chunk(unsolved_related_species)
-                not_enough_references += unsolvable_count
+                solved_this_iteration = False
 
-                # Update progress bar
-                if self.progress_bar:
-                    self.progress_bar.update(unsolvable_count)
+                for level in taxonomic_levels:
+                    comparison_group, success = self.connector.fetch_sampled_solved_related_sequences(
+                        current_entry,
+                        level,
+                        self.lower_reference_threshold,
+                        self.upper_reference_threshold
+                    )
 
-        if self.progress_bar:
-            self.progress_bar.close()
+                    if success:
+                        hmm = self._construct_hmm(comparison_group)
+                        # todo: chunk process this: (although so far it doesn't seem problematic)
+                        related_entries, success = self.connector.fetch_unsolved_related_sequences(current_entry, level)
+                        if success:
+                            solved = self._query_sequences_against_hmm(hmm, related_entries)
 
-        logger.info(f"HMM solved: {hmm_solved}")
-        logger.info(f"A total of {not_enough_references} entries did not have enough references to match.")
-        logger.info(f"{failed} entries were not matched successfully.")
-        logger.info(f"A total of {self.cases_for_which_empty_query_was_created} cases were dropped because of an empty query.")
+                            hmm_solved += len(solved)
+                            failed += len(related_entries) - len(solved)
+                            if self.progress_bar:
+                                self.progress_bar.update(len(related_entries))
+
+                            if not solved.empty:
+                                self.connector.write_pair_chunk(solved)
+
+                        solved_this_iteration = True
+                        break
+
+                if not solved_this_iteration:
+                    entry_id = int(current_entry['specimen_id'].loc[0])
+                    unsolved_related_species, has_any_related_cases = self.connector.fetch_unsolved_related_sequences(current_entry, 'taxon_species')
+                    if has_any_related_cases:
+                        if entry_id not in unsolved_related_species['specimen_id'].values:
+                            unsolved_related_species = pd.concat([unsolved_related_species, current_entry], ignore_index=True)
+                    else:
+                        unsolved_related_species = current_entry
+                    unsolvable_count = len(unsolved_related_species)
+                    logger.warning(
+                        f"Removing specimen '{entry_id}': a total of {unsolvable_count} members of their species to continue.")
+                    unsolved_related_species["orf_index"] = -1
+                    # how do I add the possibly missing current entry?
+                    self.connector.write_pair_chunk(unsolved_related_species)
+                    not_enough_references += unsolvable_count
+
+                    # Update progress bar
+                    if self.progress_bar:
+                        self.progress_bar.update(unsolvable_count)
+
+            if self.progress_bar:
+                self.progress_bar.close()
+
+            logger.info(f"HMM solved: {hmm_solved}")
+            logger.info(f"A total of {not_enough_references} entries did not have enough references to match.")
+            logger.info(f"{failed} entries were not matched successfully.")
+            logger.info(f"A total of {self.cases_for_which_empty_query_was_created} cases were dropped because of an empty query.")
+            logger.info(f"Starting writeback. This may take a moment.")
+            self.connector.primer_pairs_writeback()
+            logger.info("Writeback complete.")
+            self.connector.remove_temp_table()
 
     ## helper functions
     def _construct_hmm(self, reference_entries: pd.DataFrame) -> pyhmmer.plan7.HMM:
@@ -243,11 +258,13 @@ class OrfDecider:
 
                 # store best result
                 [read_id, correct_orf] = top_hit.name.decode().split("_")
-                ambiguous_entries.loc[ambiguous_entries["specimen_id"] == int(read_id), 'orf_index'] = int(correct_orf)
+                mask = ambiguous_entries["specimen_id"] == int(read_id)
+                ambiguous_entries.loc[mask, 'orf_index'] = int(correct_orf)
+                ambiguous_entries.loc[mask, 'orf_aa'] = (ambiguous_entries.loc[mask, ["inter_primer_sequence", "orf_index"]]
+                             .apply(lambda entry: self._dna_to_aa(entry["inter_primer_sequence"], entry["orf_index"]), axis=1))
                 if len(modified_entries[modified_entries["specimen_id"] == int(read_id)]) == 0:
                     modified_entries = pd.concat([modified_entries,
-                                                  ambiguous_entries.loc[
-                                                      ambiguous_entries["specimen_id"] == int(read_id)].copy()],
+                                                  ambiguous_entries.loc[mask].copy()],
                                                  ignore_index=True)
             else:
                 # store -1 as failed flag if there is no match
