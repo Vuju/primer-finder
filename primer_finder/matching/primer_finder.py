@@ -119,14 +119,13 @@ class PrimerFinder:
             backward_match = self._compute_regex_match(query.backward_primer,
                                                        query.backward_primer_regex,
                                                        dna_sequence[backward_search_interval[0]:backward_search_interval[1]])
-
-        ## for each missing exact match, try smith waterman:
-        if forward_match.is_mismatch():
             if not backward_match.is_mismatch():
                 backward_match.start_index += backward_search_interval[0]
                 backward_match.end_index += backward_search_interval[0]
                 forward_search_interval = __limit_to_interval_before(backward_match.start_index)
 
+        ## for each missing exact match, try smith waterman:
+        if forward_match.is_mismatch():
             forward_match = self.smith_waterman.align_partial(
                 primer=query.forward_primer,
                 super_sequence=dna_sequence,
