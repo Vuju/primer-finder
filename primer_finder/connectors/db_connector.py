@@ -484,7 +484,7 @@ class DbConnector(Connector):
 
     def remove_temp_table(self):
         conn = sqlite3.connect(self.db_path)
-        conn.execute("DROP TABLE primer_taxonomic_groups")
+        conn.execute("DROP TABLE IF EXISTS primer_taxonomic_groups")
         conn.close()
 
     def _fetch_any_related_sequences(self, current_entry, level, solved: bool):
@@ -523,4 +523,5 @@ class DbConnector(Connector):
           AND primer_pairs.reverse_match_id = ptg.reverse_match_id
         """
         conn.execute(writeback_query)
+        conn.commit()
         conn.close()
