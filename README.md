@@ -93,7 +93,7 @@ You can override configuration values using environment variables with the prefi
 
 ```bash
 # Override input file path
-export PRIMER_FINDER_PATHS__INPUT_FILE="./data/my_sequences.fna"
+export PRIMER_FINDER_PATHS__INPUT_FILE="./data/my_eyeBOLD.db"
 
 # Override number of threads
 export PRIMER_FINDER_PARALLELIZATION__NUM_THREADS=4
@@ -115,19 +115,32 @@ GGTCAACAAATCATAAAGATATTGG,TAAACTTCAGGGTGACCAAAAAATCA,650
 CCAGAGATTAGAGGGAACTGGATGA,GGGACGGTAAATCATTCAATATTATC,475
 ```
 
-### Sequence File
+### Sequence File (Deprecated, may be re-implemented later)
 
 The tool supports FASTA format files and can handle both single-line and multi-line sequence entries. Both compressed (.gz) and uncompressed files are supported.
 
+### eyeBOLD database
+
+This tool was build to connect to the eyeBOLD_db created by https://github.com/TRojaner2013/eyeBOLD.
+Specifically, it requires the specimen table from this database.
+
 ## Output
 
-The output is a CSV file containing:
+The file output (deprecated) is a CSV file containing:
 - Sequence metadata (BOLD ID, Read ID, taxonomic information)
 - Forward primer match details (score, matched sequence, position)
 - Reverse primer match details
 - Inter-primer sequence
 - Possible ORFs
 - Single, most likely ORF (when ORF finder is used)
+
+When using eyeBOLD, the database is extended:
+- A "primer_matches" table
+  - This contains all the data on forward an reverse primer matches
+- A "primer_pairs" table, containing:
+  - The inter primer sequence
+  - The most likely ORF
+  - The amino-acid sequence translated from the most likely ORF
 
 ## Architecture
 
@@ -151,8 +164,9 @@ The ORF finder module identifies and resolves ambiguous open reading frames:
 ### Connectors
 
 The system uses a connector architecture to handle different input/output sources:
-- FileConnector: Handles file-based input/output
-- Other connectors can be implemented by extending the base Connector class
+- FileConnector (deprecated): Handles file-based input/output
+- DbConnector: Handles usage of eyeBOLD.
+- Other connectors can be implemented by extending the base Connector class.
 
 ## Performance Optimization
 
