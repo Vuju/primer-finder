@@ -15,7 +15,7 @@ database:  # only necessary if input is a db file.
 
 # Logger settings
 logging:
-  level: 20  # INFO level (corresponds to logging.INFO)
+  level: 20  # 20 corresponds to logging.INFO
 
 # Feature toggles
 features:
