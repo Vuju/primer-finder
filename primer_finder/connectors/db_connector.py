@@ -450,10 +450,9 @@ class DbConnector(Connector):
     def fetch_unsolved_related_sequences(self, current_entry, level):
         return self._fetch_any_related_sequences(current_entry, level, False)
 
-    def init_temp_pairs_table(self, forward_primer_seq, reverse_primer_seq, batch_size = 50000):
+    def init_temp_pairs_table(self, forward_primer_seq, reverse_primer_seq):
         conn = sqlite3.connect(self.db_path)
-        self.remove_temp_table()
-
+        # self.remove_temp_table()
         creation_query = f"""
             CREATE TABLE IF NOT EXISTS primer_taxonomic_groups AS
             SELECT pp.*, s.taxon_genus, s.taxon_species, s.taxon_family, s.taxon_order, s.taxon_class,
@@ -465,29 +464,10 @@ class DbConnector(Connector):
             WHERE fm.primer_sequence = ?
             AND rm.primer_sequence = ?;
             """
-        progress_done = False
-        def show_progress():
-            """Timer to show the program is still working."""
-            start_time = time.time()
-            while not progress_done:
-                elapsed = time.time() - start_time
-                print(f"\rProcessing... {elapsed/60}:{elapsed%60}m elapsed", end="", flush=True)
-                time.sleep(1)
-
-        logger.info(f"Creating temp pairs table for {forward_primer_seq} and {reverse_primer_seq}.")
-        logger.info("Since this takes so long and the progress cant be properly measured, here is a timer at least:")
-
-        progress_thread = threading.Thread(target=show_progress)
-        progress_thread.start()
-
-        conn.execute(creation_query, (forward_primer_seq, reverse_primer_seq))
-        conn.commit()
-
-        progress_done = True
-        progress_thread.join()
-
-        # indexing
+        logger.info(f"Creating temp pairs table for {forward_primer_seq} and {reverse_primer_seq}. This may take a while.")
+        conn.execute(creation_query,(forward_primer_seq, reverse_primer_seq))
         logger.info("Finished creating temp pairs table. Creating indexes.")
+
         logger.info("Setting up indexes: Orf Index (1/7)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sequence ON primer_taxonomic_groups(orf_index)")
         logger.info("Setting up indexes: Species (2/7)")
@@ -507,7 +487,7 @@ class DbConnector(Connector):
 
     def remove_temp_table(self):
         conn = sqlite3.connect(self.db_path)
-        conn.execute("DROP TABLE IF EXISTS primer_taxonomic_groups")
+        conn.execute("DROP TABLE primer_taxonomic_groups")
         conn.close()
 
     def _fetch_any_related_sequences(self, current_entry, level, solved: bool):
