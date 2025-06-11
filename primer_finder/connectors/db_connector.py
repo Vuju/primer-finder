@@ -472,16 +472,16 @@ class DbConnector(Connector):
             start_time = time.time()
             while not progress_done:
                 elapsed = time.time() - start_time
-                print(f"\rProcessing... {elapsed / 60}:{elapsed % 60}m elapsed", end="", flush=True)
+                print(f"\rProcessing... {(elapsed / 60):0.0f}:{(elapsed % 60):2.0f}m elapsed", end="", flush=True)
                 time.sleep(1)
 
         progress_thread = threading.Thread(target=show_progress)
         progress_thread.start()
-
-        conn.execute(creation_query,(forward_primer_seq, reverse_primer_seq))
-
-        progress_done = True
-        progress_thread.join()
+        try:
+            conn.execute(creation_query,(forward_primer_seq, reverse_primer_seq))
+        finally:
+            progress_done = True
+            progress_thread.join()
 
         logger.info("Finished creating temp pairs table. Creating indexes.")
 
