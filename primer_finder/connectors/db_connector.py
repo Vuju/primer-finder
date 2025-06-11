@@ -452,7 +452,7 @@ class DbConnector(Connector):
 
     def init_temp_pairs_table(self, forward_primer_seq, reverse_primer_seq):
         conn = sqlite3.connect(self.db_path)
-        # self.remove_temp_table()
+        self.remove_temp_table()
         creation_query = f"""
             CREATE TABLE IF NOT EXISTS primer_taxonomic_groups AS
             SELECT pp.*, s.taxon_genus, s.taxon_species, s.taxon_family, s.taxon_order, s.taxon_class,
@@ -465,7 +465,24 @@ class DbConnector(Connector):
             AND rm.primer_sequence = ?;
             """
         logger.info(f"Creating temp pairs table for {forward_primer_seq} and {reverse_primer_seq}. This may take a while.")
+        logger.info("Since this cant be properly measured, here is at least a timer:")
+
+        progress_done = False
+        def show_progress():
+            start_time = time.time()
+            while not progress_done:
+                elapsed = time.time() - start_time
+                print(f"\rProcessing... {elapsed / 60}:{elapsed % 60}m elapsed", end="", flush=True)
+                time.sleep(1)
+
+        progress_thread = threading.Thread(target=show_progress)
+        progress_thread.start()
+
         conn.execute(creation_query,(forward_primer_seq, reverse_primer_seq))
+
+        progress_done = True
+        progress_thread.join()
+
         logger.info("Finished creating temp pairs table. Creating indexes.")
 
         logger.info("Setting up indexes: Orf Index (1/7)")
