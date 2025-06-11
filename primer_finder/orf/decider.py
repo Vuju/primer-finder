@@ -137,8 +137,6 @@ class OrfDecider:
                     else:
                         unsolved_related_species = current_entry
                     unsolvable_count = len(unsolved_related_species)
-                    logger.warning(
-                        f"Removing specimen '{entry_id}': a total of {unsolvable_count} members of their species to continue.")
                     unsolved_related_species["orf_index"] = -1
                     # how do I add the possibly missing current entry?
                     self.connector.write_pair_chunk(unsolved_related_species)

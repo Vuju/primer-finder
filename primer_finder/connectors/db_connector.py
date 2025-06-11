@@ -130,11 +130,15 @@ class DbConnector(Connector):
 
     def write_output(self, _, information):
         db = sqlite3.connect(self.db_path)
-        db.execute('PRAGMA synchronous = NORMAL')
-        db.execute('PRAGMA journal_mode=WAL')
-        db.execute('PRAGMA journal_size_limit = 0')
-        db.execute('PRAGMA cache_size = -2000')
-        db.execute('PRAGMA temp_store = MEMORY')
+        try:
+            db.execute('PRAGMA synchronous = NORMAL')
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('PRAGMA journal_size_limit = 0')
+            db.execute('PRAGMA cache_size = -2000')
+            db.execute('PRAGMA temp_store = MEMORY')
+        except sqlite3.OperationalError:
+            return False # in case the db is still in use and write needs a retry later.
+
         cursor = db.cursor()
         try:
             # Start a single transaction for all entries
@@ -223,8 +227,7 @@ class DbConnector(Connector):
             """, primer_pairs_data)
 
             db.commit()
-            #wal_size = os.path.getsize("/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini.db-wal")
-            #logger.info(f"WAL size: {wal_size / (1024*1024):.2f} MB")
+            return True
 
         except Exception as e:
             # Rollback in case of error
@@ -487,6 +490,7 @@ class DbConnector(Connector):
         finally:
             progress_done = True
             progress_thread.join()
+            print("\n")
 
         logger.info("Finished creating temp pairs table. Creating indexes.")
 
@@ -552,23 +556,24 @@ class DbConnector(Connector):
             FROM primer_taxonomic_groups ptg
             WHERE primer_pairs.forward_match_id = ptg.forward_match_id
               AND primer_pairs.reverse_match_id = ptg.reverse_match_id
-            LIMIT ? OFFSET ?
         """
 
         conn = sqlite3.connect(self.db_path)
-        offset = 0
+        progress_done = False
+        def show_progress():
+            start_time = time.time()
+            while not progress_done:
+                elapsed = time.time() - start_time
+                print(f"\rProcessing... {(elapsed / 60):0.0f}:{(elapsed % 60):2.0f}m elapsed", end="", flush=True)
+                time.sleep(1)
 
-        total_records = conn.execute(count_query).fetchone()[0]
-        pbar = tqdm(total=total_records, desc="Updating primer pairs")
-        while offset < total_records:
-            conn.execute(writeback_query, (batch_size, offset))
+        progress_thread = threading.Thread(target=show_progress)
+        progress_thread.start()
+        try:
+            conn.execute(writeback_query)
             conn.commit()
-
-            pbar.update(batch_size)
-            offset += batch_size
-
-            if offset >= total_records:
-                break
-
-        pbar.close()
-        conn.close()
+        finally:
+            progress_done = True
+            progress_thread.join()
+            print("\n")
+            conn.close()

@@ -3,9 +3,9 @@
 # File paths
 paths:
   primer_information: "./primer_finder/config/primer_information.csv"
-  muscle: "/mnt/c/Users/Julian/bin/muscle"
+  muscle: "/mnt/c/Users/JulianSiemer/bin/muscle"
   log_file: "primer-finder_log.log"
-  input_file: "/mnt/z/Uni/Master Thesis/eyeBOLD/eyeBOLD_mini3.db"
+  input_file: "/mnt/c/Users/JulianSiemer/PycharmProjects/eyeBOLD/eyeBOLD_mini.db"
   output_file: "./data/primer-finder-result-mini.csv" # only necessary if input is a fasta file.
 
 database:  # only necessary if input is a db file.
@@ -52,3 +52,4 @@ parallelization:
   # Set to null to select the maximum number for your cpu.
   num_threads: null
   chunk_size: 100
+  database_batch_size: 50000

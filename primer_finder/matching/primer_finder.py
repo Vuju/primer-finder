@@ -1,4 +1,5 @@
 import logging
+import time
 from functools import partial
 from multiprocessing import Pool, Lock
 
@@ -78,11 +79,12 @@ class PrimerFinder:
                 for wbv in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
                     results_buffer.extend(wbv)
                     if len(results_buffer) >= self.db_batch_size:  # Adjust batch size
-                        self.connector.write_output("", results_buffer)
-                        results_buffer = []
+                        if self.connector.write_output("", results_buffer):
+                            results_buffer = []
                     pbar.update(self.chunk_size)
                 if results_buffer:
-                    self.connector.write_output("", results_buffer)
+                    while not self.connector.write_output("", results_buffer):
+                        time.sleep(5)
             pbar.close()
 
     def _process_sequences_chunk(self, query: PrimerDataDTO, sequence_list):
