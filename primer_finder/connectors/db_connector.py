@@ -30,6 +30,7 @@ class DbConnector(Connector):
         self.input_id_column_name = config["database"]["id_column_name"]
         self.input_sequence_column_name = config["database"]["sequence_column_name"]
         self.cutoff = config["algorithm"]["smith_waterman_score_cutoff"]
+        self.default_batch_size = config["parallelization"]["database_batch_size"]
 
         self.number_of_sequences = None
         self.db_path = db_path
@@ -51,8 +52,10 @@ class DbConnector(Connector):
         db.close()
         return self.number_of_sequences
 
-    def read_sequences(self, forward_primer, backward_primer, batch_size=50000) -> Generator[
-        tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
+    def read_sequences(self, forward_primer, backward_primer, batch_size=None) -> Generator[
+                        tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
+        if batch_size is None:
+            batch_size = self.default_batch_size
         query = f"""
                 SELECT 
                     input.{self.input_id_column_name} as specimen_id,
@@ -358,7 +361,9 @@ class DbConnector(Connector):
 
     # ------------------------  Connector for ORF Matching ------------------------
 
-    def read_pairs_chunk(self, chunk_size, batch_size = 50000):
+    def read_pairs_chunk(self, chunk_size, batch_size = None):
+        if batch_size is None:
+            batch_size = self.default_batch_size
         query = f"""
                 SELECT forward_match_id, reverse_match_id, specimen_id, inter_primer_sequence, 
                 orf_candidates, orf_index, orf_aa, matching_flags
@@ -532,7 +537,10 @@ class DbConnector(Connector):
         finally:
             conn.close()
 
-    def primer_pairs_writeback(self, chunk_size = 50000):
+    def primer_pairs_writeback(self, batch_size = None):
+        if batch_size is None:
+            batch_size = self.default_batch_size
+
         count_query = f"""
             SELECT COUNT(*)
             FROM primer_taxonomic_groups;
@@ -553,11 +561,11 @@ class DbConnector(Connector):
         total_records = conn.execute(count_query).fetchone()[0]
         pbar = tqdm(total=total_records, desc="Updating primer pairs")
         while offset < total_records:
-            conn.execute(writeback_query, (chunk_size, offset))
+            conn.execute(writeback_query, (batch_size, offset))
             conn.commit()
 
-            pbar.update(chunk_size)
-            offset += chunk_size
+            pbar.update(batch_size)
+            offset += batch_size
 
             if offset >= total_records:
                 break

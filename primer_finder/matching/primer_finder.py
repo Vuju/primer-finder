@@ -47,11 +47,12 @@ class PrimerFinder:
         config = get_config_loader().get_config()
 
         self.primer_information_file = primer_information_file or config["paths"]["primer_information"]
-        self.custom_num_threads = custom_num_threads or config["parallelization"]["num_threads"]
-        self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
         self.search_area = search_area or config["algorithm"]["search_area"]
         self.smith_waterman_score_cutoff = smith_waterman_score_cutoff or config["algorithm"]["smith_waterman_score_cutoff"]
         self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
+        self.custom_num_threads = custom_num_threads or config["parallelization"]["num_threads"]
+        self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
+        self.db_batch_size = config["parallelization"]["database_batch_size"]
         self.primer_data = []
         self.connector = connector
         self.smith_waterman = smith_waterman or SmithWaterman()
@@ -76,7 +77,7 @@ class PrimerFinder:
                 results_buffer = []
                 for wbv in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
                     results_buffer.extend(wbv)
-                    if len(results_buffer) >= 20000:  # Adjust batch size
+                    if len(results_buffer) >= self.db_batch_size:  # Adjust batch size
                         self.connector.write_output("", results_buffer)
                         results_buffer = []
                     pbar.update(self.chunk_size)

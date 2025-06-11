@@ -166,7 +166,7 @@ class ConfigLoader:
                 raise ConfigurationError(f"Missing required algorithm parameter: {param}")
         
         # Validate parallelization settings
-        required_parallelization_params = ["chunk_size"]
+        required_parallelization_params = ["num_threads", "chunk_size", "database_batch_size"]
         for param in required_parallelization_params:
             if param not in self.config["parallelization"]:
                 raise ConfigurationError(f"Missing required parallelization parameter: {param}")
