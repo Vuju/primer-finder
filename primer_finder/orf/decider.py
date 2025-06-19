@@ -182,10 +182,13 @@ class OrfDecider:
             for sequence in reference_sequences:
                 # print(seq.sequence)
                 sequence.write(f)
-        subprocess.run([f"{self.muscle_path}", "-align", tmp_in_file, "-output", tmp_out_file],
+        result = subprocess.run([f"{self.muscle_path}", "-align", tmp_in_file, "-output", tmp_out_file],
                        stdout=subprocess.PIPE,
                        stderr=subprocess.PIPE,
                        text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"MUSCLE failed with exit code {result.returncode}: \n{result.stderr}")
 
         # build hmm profile from the result
         msa = pyhmmer.easel.MSAFile(tmp_out_file).read()
