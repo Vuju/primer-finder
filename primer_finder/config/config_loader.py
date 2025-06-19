@@ -1,8 +1,7 @@
 """Configuration loader for primer-finder."""
-
+import argparse
 import os
 import yaml
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
@@ -28,19 +27,32 @@ class ConfigLoader:
     
     # Environment variable prefix for overriding configuration
     ENV_PREFIX = "PRIMER_FINDER_"
-    
+
+    using_default_config = False
+
     def __init__(self, config_path: Optional[Union[str, Path]] = None):
         """
         Initialize the configuration loader.
-        
-        Args:
-            config_path: Path to the configuration file. If None, the default
-                configuration file is used.
+
+        config_path: Path to the configuration file. If None, checks CLI args
+            for -c/--config flag, then falls back to default configuration file.
         """
+        if config_path is None:
+            config_path = self._get_config_from_cli()
+        if config_path is None:
+            self.using_default_config = True
         self.config_path = Path(config_path) if config_path else self.DEFAULT_CONFIG_PATH
         self.config = self._load_config()
         self._override_from_env()
         self._validate_config()
+
+    def _get_config_from_cli(self) -> Optional[str]:
+        """Extract only the config flag from CLI args."""
+        parser = argparse.ArgumentParser(add_help=False)  # Don't add help to avoid conflicts
+        parser.add_argument('-c', '--config', type=str, default=None)
+
+        args, _ = parser.parse_known_args()
+        return args.config
     
     def _load_config(self) -> Config:
         """
@@ -179,6 +191,15 @@ class ConfigLoader:
             The complete configuration.
         """
         return self.config
+
+    def get_cli_config(self) -> tuple[Config, bool]:
+        """
+        Get the complete configuration. And a flag whether the configuration is the default or not.
+
+        Returns:
+            The complete configuration.
+        """
+        return self.config, self.using_default_config
     
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """

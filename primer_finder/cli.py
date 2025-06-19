@@ -4,12 +4,10 @@ import argparse
 import logging
 import sys
 
-import pandas as pd
-
 from primer_finder.config.config_loader import get_config_loader
 from primer_finder.connectors.factory import get_connector
 
-config = get_config_loader().get_config()
+config, is_using_default_config = get_config_loader().get_cli_config()
 log_level = config["logging"]["level"]
 enable_primer_finder = config["features"]["enable_primer_finder"]
 enable_orf_decider = config["features"]["enable_orf_finder"]
@@ -34,6 +32,10 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Find primers in genetic sequences and analyze open reading frames."
     )
+    parser.add_argument(
+        '-c', '--config',
+        type=str,
+        help='Path to a custom configuration file.')
     parser.add_argument(
         "--input", "-i", 
         default=input_file_path,
@@ -96,6 +98,8 @@ def main():
     """Main entry point for the CLI."""
     args = parse_args()
     logger = setup_logging(args.log, args.log_level)
+    if is_using_default_config:
+        logger.info("Using default configuration, as no other configuration was provided.")
 
     if not args.find_primers and not args.find_orfs:
         args.find_primers = True
