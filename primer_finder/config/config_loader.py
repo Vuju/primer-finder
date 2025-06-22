@@ -162,7 +162,7 @@ class ConfigLoader:
             raise ConfigurationError("Missing required logging level")
         
         # Validate features
-        required_features = ["enable_primer_finder", "enable_orf_finder"]
+        required_features = ["override", "enable_primer_finder", "enable_orf_finder"]
         for feature in required_features:
             if feature not in self.config["features"]:
                 raise ConfigurationError(f"Missing required feature toggle: {feature}")

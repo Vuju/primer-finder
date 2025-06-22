@@ -26,6 +26,7 @@ class DbConnector(Connector):
 
     def __init__(self,db_path: str, table_name: str = None) -> None:
         config = get_config_loader().get_config()
+        self.override = config["features"]["override"]
         self.input_table_name = table_name or config["database"]["input_table_name"]
         self.input_id_column_name = config["database"]["id_column_name"]
         self.input_sequence_column_name = config["database"]["sequence_column_name"]
@@ -56,29 +57,45 @@ class DbConnector(Connector):
                         tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
         if batch_size is None:
             batch_size = self.default_batch_size
-        query = f"""
+        query = ""
+        if self.override:
+            query = f"""
                 SELECT 
                     input.{self.input_id_column_name} as specimen_id,
                     input.{self.input_sequence_column_name} as sequence,
-                    forward_match.primer_start_index as forward_start,
-                    forward_match.primer_end_index as forward_end,
-                    forward_match.match_score as forward_score,
-                    backward_match.primer_start_index as backward_start,
-                    backward_match.primer_end_index as backward_end,
-                    backward_match.match_score as backward_score
+                    NULL as forward_start,
+                    NULL as forward_end,
+                    NULL as forward_score,
+                    NULL as backward_start,
+                    NULL as backward_end,
+                    NULL as backward_score
                 FROM 
                     {self.input_table_name} as input
-                LEFT JOIN 
-                    primer_matches as forward_match
-                ON 
-                    input.{self.input_id_column_name} = forward_match.specimen_id
-                    AND forward_match.primer_sequence = ?
-                LEFT JOIN 
-                    primer_matches as backward_match
-                ON 
-                    input.{self.input_id_column_name} = backward_match.specimen_id
-                    AND backward_match.primer_sequence = ?
             """
+        else:
+            query = f"""
+                    SELECT 
+                        input.{self.input_id_column_name} as specimen_id,
+                        input.{self.input_sequence_column_name} as sequence,
+                        forward_match.primer_start_index as forward_start,
+                        forward_match.primer_end_index as forward_end,
+                        forward_match.match_score as forward_score,
+                        backward_match.primer_start_index as backward_start,
+                        backward_match.primer_end_index as backward_end,
+                        backward_match.match_score as backward_score
+                    FROM 
+                        {self.input_table_name} as input
+                    LEFT JOIN 
+                        primer_matches as forward_match
+                    ON 
+                        input.{self.input_id_column_name} = forward_match.specimen_id
+                        AND forward_match.primer_sequence = ?
+                    LEFT JOIN 
+                        primer_matches as backward_match
+                    ON 
+                        input.{self.input_id_column_name} = backward_match.specimen_id
+                        AND backward_match.primer_sequence = ?
+                """
 
         offset = 0
         db = sqlite3.connect(self.db_path)
@@ -90,7 +107,7 @@ class DbConnector(Connector):
             df = pd.read_sql_query(
                 sql=pagination_query,
                 con=db,
-                params=[forward_primer, backward_primer],
+                params= None if self.override else [forward_primer, backward_primer],
             )
 
             # Break if no more results
@@ -239,7 +256,7 @@ class DbConnector(Connector):
             db.close()
 
     def _set_flags(self, forward_match, backward_match) -> int:
-        f_cutoff = self.cutoff * 2 * len(forward_match.primer_sequence)
+        f_cutoff = self.cutoff * 2 * len(forward_match.primer_sequence) # this expects 2 to be the default reward for a match!!
         b_cutoff = self.cutoff * 2 * len(backward_match.primer_sequence)
         if forward_match.score < f_cutoff:
             if backward_match.score < b_cutoff:
@@ -463,15 +480,21 @@ class DbConnector(Connector):
         self.remove_temp_table()
         creation_query = f"""
             CREATE TABLE IF NOT EXISTS primer_taxonomic_groups AS
-            SELECT pp.*, s.taxon_genus, s.taxon_species, s.taxon_family, s.taxon_order, s.taxon_class,
-                   fm.primer_sequence as forward_seq, rm.primer_sequence as reverse_seq
-            FROM primer_pairs pp
-            JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
-            JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
-            JOIN specimen s ON pp.specimen_id = s.specimenid
-            WHERE fm.primer_sequence = ?
-            AND rm.primer_sequence = ?;
+                SELECT pp.*, s.taxon_genus, s.taxon_species, s.taxon_family, s.taxon_order, s.taxon_class,
+                       fm.primer_sequence as forward_seq, rm.primer_sequence as reverse_seq
+                FROM primer_pairs pp
+                    LEFT JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
+                    LEFT JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
+                    LEFT JOIN specimen s ON pp.specimen_id = s.specimenid
+                WHERE fm.primer_sequence = ?
+                  AND rm.primer_sequence = ?;
             """
+        override_query = """
+            UPDATE primer_taxonomic_groups
+            SET orf_aa    = NULL,
+                orf_index = NULL
+            """
+
         logger.info(f"Creating temp pairs table for {forward_primer_seq} and {reverse_primer_seq}. This may take a while.")
         logger.info("Since this cant be properly measured, here is at least a timer:")
 
@@ -492,7 +515,11 @@ class DbConnector(Connector):
             progress_thread.join()
             print("\n")
 
-        logger.info("Finished creating temp pairs table. Creating indexes.")
+        logger.info("Finished creating temp pairs table.")
+
+        if self.override:
+            logger.info("Resetting values for override mode.")
+            conn.execute(override_query)
 
         logger.info("Setting up indexes: Orf Index (1/7)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sequence ON primer_taxonomic_groups(orf_index)")

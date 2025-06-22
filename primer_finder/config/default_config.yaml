@@ -3,10 +3,10 @@
 # File paths
 paths:
   primer_information: "./primer_finder/config/primer_information.csv"
-  muscle: "/mnt/c/Users/JulianSiemer/bin/muscle"
+  muscle: null
   log_file: "primer-finder_log.log"
-  input_file: "/mnt/c/Users/JulianSiemer/PycharmProjects/eyeBOLD/eyeBOLD_mini.db"
-  output_file: "./data/primer-finder-result-mini.csv" # only necessary if input is a fasta file.
+  input_file: null
+  output_file: null # only necessary if input is a fasta file.
 
 database:  # only necessary if input is a db file.
   input_table_name: "specimen"
@@ -19,6 +19,7 @@ logging:
 
 # Feature toggles
 features:
+  override: false
   enable_primer_finder: false
   enable_orf_finder: false
 
