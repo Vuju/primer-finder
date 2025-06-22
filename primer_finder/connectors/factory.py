@@ -20,4 +20,4 @@ def get_connector(input_file_path: str, connector_args):
             return DbConnector(input_file_path, connector_args["db_table_name"])
         case _:
             raise ConfigurationError(f"Unknown input type: {input_file_path.split(".")[-1]}.\n"
-                                     f"Currently supported: fna, fasta, gz, db")
+                                     f"Currently supported: db (and formerly: fna, fasta, gz)")

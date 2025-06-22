@@ -35,7 +35,8 @@ def parse_args():
     parser.add_argument(
         '-c', '--config',
         type=str,
-        help='Path to a custom configuration file.')
+        help='Path to a custom configuration file.'
+    )
     parser.add_argument(
         "--input", "-i", 
         default=input_file_path,
@@ -104,6 +105,9 @@ def main():
     if not args.find_primers and not args.find_orfs:
         args.find_primers = True
         args.find_orfs = True
+    if not args.input:
+        logger.warning("No input file provided.")
+        args.input = input("Please enter the input file path: ").strip()
     connector_args = {
         "output_file": args.output,
         "db_table_name": args.table_name,
