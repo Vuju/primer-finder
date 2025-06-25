@@ -170,6 +170,9 @@ class DbConnector(Connector):
                 # Unpack the tuple elements
                 specimen_id, forward_match, backward_match, inter_primer_sequence, possible_orf = entry
 
+                if forward_match.is_mismatch() and backward_match.is_mismatch():
+                    continue
+
                 # Add forward primer match data
                 primer_matches_data.append((
                     specimen_id,
