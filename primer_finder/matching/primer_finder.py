@@ -107,6 +107,9 @@ class PrimerFinder:
                     max(0, i - distance + offset))
 
         sequence_metadata, dna_sequence, forward_match, backward_match = sequence_object
+
+        if dna_sequence is None:
+            return sequence_metadata, MatchResultDTO(), MatchResultDTO(), None, []
         dna_sequence = dna_sequence.strip()
         forward_search_interval, backward_search_interval = (0, len(dna_sequence)), (0, len(dna_sequence))
 
