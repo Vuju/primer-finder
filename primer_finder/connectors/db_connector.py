@@ -217,7 +217,7 @@ class DbConnector(Connector):
                                WHERE specimen_id = ?
                                  AND primer_sequence = ?
                                """, (specimen_id, forward_match.primer_sequence))
-                forward_match_id = cursor.fetchone()[0]
+                forward_match_id_cursor = cursor.fetchone()
 
                 # Get IDs for backward primers
                 cursor.execute("""
@@ -226,12 +226,16 @@ class DbConnector(Connector):
                                WHERE specimen_id = ?
                                  AND primer_sequence = ?
                                """, (specimen_id, backward_match.primer_sequence))
-                backward_match_id = cursor.fetchone()[0]
+                backward_match_id_cursor = cursor.fetchone()
+
+                if not forward_match_id_cursor or not backward_match_id_cursor:
+                    logger.warning(f"Could not find matches for {specimen_id}.")
+                    continue
 
                 # Add primer pair data
                 primer_pairs_data.append((
-                    forward_match_id,
-                    backward_match_id,
+                    forward_match_id_cursor[0],
+                    backward_match_id_cursor[0],
                     specimen_id,
                     inter_primer_sequence,
                     _encrypt_po(possible_orf),
