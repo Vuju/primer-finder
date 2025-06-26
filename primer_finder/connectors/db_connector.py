@@ -33,7 +33,7 @@ class DbConnector(Connector):
         self.cutoff = config["algorithm"]["smith_waterman_score_cutoff"]
         self.default_batch_size = config["parallelization"]["database_batch_size"]
 
-        self.number_of_sequences = None
+        self.__number_of_sequences = None
         self.db_path = db_path
         self.__init_db_connection()
         self.__ensure_input_table_exists()
@@ -41,17 +41,20 @@ class DbConnector(Connector):
         self.__ensure_primer_pairs_table_exists()
 
     def get_number_of_sequences(self) -> int:
-        if self.number_of_sequences is not None:
-            return self.number_of_sequences
+        if self.__number_of_sequences is not None:
+            return self.__number_of_sequences
 
         query = f"""
                 SELECT COUNT(*) FROM {self.input_table_name}
                 """
         db = sqlite3.connect(self.db_path)
         result = db.execute(query)
-        self.number_of_sequences = result.fetchone()[0]
+        self.__number_of_sequences = result.fetchone()[0]
         db.close()
-        return self.number_of_sequences
+        return self.__number_of_sequences
+
+    def __get_match_id(self, specimen_id, primer_sequence) -> str:
+        return f"{specimen_id}_{primer_sequence}"
 
     def read_sequences(self, forward_primer, backward_primer, batch_size=None) -> Generator[
                         tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
@@ -168,13 +171,17 @@ class DbConnector(Connector):
             # Collect data for all entries
             for entry in information:
                 # Unpack the tuple elements
-                specimen_id, forward_match, backward_match, inter_primer_sequence, possible_orf = entry
+                specimen_id, forward_match, reverse_match, inter_primer_sequence, possible_orf = entry
 
-                if forward_match.is_mismatch() and backward_match.is_mismatch():
+                if forward_match.is_mismatch() and reverse_match.is_mismatch():
                     continue
+
+                forward_id = self.__get_match_id(specimen_id, forward_match.primer_sequence)
+                reverse_id = self.__get_match_id(specimen_id, reverse_match.primer_sequence)
 
                 # Add forward primer match data
                 primer_matches_data.append((
+                    forward_id,
                     specimen_id,
                     forward_match.primer_sequence,
                     forward_match.start_index,
@@ -182,65 +189,35 @@ class DbConnector(Connector):
                     forward_match.score
                 ))
 
-                # Add backward primer match data
+                # Add reverse primer match data
                 primer_matches_data.append((
+                    reverse_id,
                     specimen_id,
-                    backward_match.primer_sequence,
-                    backward_match.start_index,
-                    backward_match.end_index,
-                    backward_match.score
+                    reverse_match.primer_sequence,
+                    reverse_match.start_index,
+                    reverse_match.end_index,
+                    reverse_match.score
+                ))
+
+                primer_pairs_data.append((
+                    forward_id,
+                    reverse_id,
+                    specimen_id,
+                    inter_primer_sequence,
+                    _encrypt_po(possible_orf),
+                    self._set_flags(forward_match, reverse_match)
                 ))
 
             # Execute batch insert for primer matches
             cursor.executemany("""
                 INSERT INTO primer_matches
-                (specimen_id, primer_sequence, primer_start_index, primer_end_index, match_score)
-                VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(specimen_id, primer_sequence) DO UPDATE 
+                (match_id, specimen_id, primer_sequence, primer_start_index, primer_end_index, match_score)
+                VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(match_id) DO UPDATE 
                     SET match_score = excluded.match_score,
                         primer_start_index = excluded.primer_start_index,
                         primer_end_index = excluded.primer_end_index
             """, primer_matches_data)
-
-            # We need to retrieve the IDs for each pair to link in primer_pairs table
-            # This requires us to query back the inserted records
-            forward_ids = {}
-            backward_ids = {}
-
-            for i, entry in enumerate(information):
-                specimen_id, forward_match, backward_match, inter_primer_sequence, possible_orf = entry
-
-                # Get IDs for forward primers
-                cursor.execute("""
-                               SELECT rowid
-                               FROM primer_matches
-                               WHERE specimen_id = ?
-                                 AND primer_sequence = ?
-                               """, (specimen_id, forward_match.primer_sequence))
-                forward_match_id_cursor = cursor.fetchone()
-
-                # Get IDs for backward primers
-                cursor.execute("""
-                               SELECT rowid
-                               FROM primer_matches
-                               WHERE specimen_id = ?
-                                 AND primer_sequence = ?
-                               """, (specimen_id, backward_match.primer_sequence))
-                backward_match_id_cursor = cursor.fetchone()
-
-                if not forward_match_id_cursor or not backward_match_id_cursor:
-                    logger.warning(f"Could not find matches for {specimen_id}.")
-                    continue
-
-                # Add primer pair data
-                primer_pairs_data.append((
-                    forward_match_id_cursor[0],
-                    backward_match_id_cursor[0],
-                    specimen_id,
-                    inter_primer_sequence,
-                    _encrypt_po(possible_orf),
-                    self._set_flags(forward_match, backward_match)
-                ))
 
             # Execute batch insert for primer pairs
             cursor.executemany("""
@@ -249,7 +226,6 @@ class DbConnector(Connector):
                 inter_primer_sequence, orf_candidates, matching_flags)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, primer_pairs_data)
-
             db.commit()
             return True
 
@@ -295,14 +271,13 @@ class DbConnector(Connector):
         if not table_exists:
             cursor.execute(f"""
                 CREATE TABLE primer_matches (
-                    match_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id TEXT PRIMARY KEY,
                     specimen_id INTEGER NOT NULL,
                     primer_sequence TEXT NOT NULL,
                     primer_start_index INTEGER,
                     primer_end_index INTEGER,
                     match_score FLOAT,
-                    FOREIGN KEY (specimen_id) REFERENCES {self.input_table_name}({self.input_id_column_name}),
-                    UNIQUE (specimen_id, primer_sequence)
+                    FOREIGN KEY (specimen_id) REFERENCES {self.input_table_name}({self.input_id_column_name})
                 )
             """)
             db.commit()
@@ -314,7 +289,7 @@ class DbConnector(Connector):
         existing_columns = {row[1] for row in cursor.fetchall()}
 
         required_columns = {
-            "match_id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+            "match_id": "TEXT PRIMARY KEY",
             "specimen_id": "INTEGER NOT NULL",
             "primer_sequence": "TEXT NOT NULL",
             "primer_start_index": "INTEGER",
@@ -346,8 +321,8 @@ class DbConnector(Connector):
         if not table_exists:
             cursor.execute(f"""
                 CREATE TABLE primer_pairs (
-                    forward_match_id      INTEGER NOT NULL,
-                    reverse_match_id      INTEGER NOT NULL,
+                    forward_match_id      TEXT NOT NULL,
+                    reverse_match_id      TEXT NOT NULL,
                     specimen_id           INTEGER NOT NULL,
                     inter_primer_sequence TEXT,
                     orf_candidates        INTEGER,
@@ -370,8 +345,8 @@ class DbConnector(Connector):
         existing_columns = {row[1] for row in cursor.fetchall()}
 
         required_columns = {
-            "forward_match_id": "INTEGER NOT NULL",
-            "reverse_match_id": "INTEGER NOT NULL",
+            "forward_match_id": "TEXT NOT NULL",
+            "reverse_match_id": "TEXT NOT NULL",
             "specimen_id": "INTEGER NOT NULL",
             "inter_primer_sequence": "TEXT",
             "orf_candidates": "INTEGER",
