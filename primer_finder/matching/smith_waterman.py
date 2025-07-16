@@ -48,7 +48,7 @@ def default_substitution_function(letter_in_primer, letter_in_read) -> float:
         case 'N':
             return 2
         case '-':
-            logger.info("Wow there is a '-'!")
+            logger.info("Wow there is a '-'!") # this should never happen in eyeBOLD
             return 0
         case _:
             raise Exception(f"unknown literal in read sequence: '{letter_in_read}'")

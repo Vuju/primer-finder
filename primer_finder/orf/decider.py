@@ -83,7 +83,6 @@ class OrfDecider:
             for chunk in chunk_generator:
                 solved = self._process_trivial_orfs(chunk)
                 if not solved.empty:
-                    # todo possibly collect for fewer writes
                     self.connector.write_pair_chunk(solved)
                     self.progress_bar.update(len(solved))
 
@@ -112,7 +111,6 @@ class OrfDecider:
 
                     if success:
                         hmm = self._construct_hmm(comparison_group)
-                        # todo: chunk process this: (although so far it doesn't seem problematic)
                         related_entries, success = self.connector.fetch_unsolved_related_sequences(current_entry, level)
                         if success:
                             solved = self._query_sequences_against_hmm(hmm, related_entries)
@@ -170,7 +168,7 @@ class OrfDecider:
         amino_alphabet = pyhmmer.easel.Alphabet.amino()
 
         reference_sequences = np.zeros(shape=len(reference_entries), dtype=pyhmmer.easel.TextSequence)
-        reference_sequences.fill(pyhmmer.easel.TextSequence("".encode(),sequence=""))
+        reference_sequences.fill(pyhmmer.easel.TextSequence(name="".encode(), sequence=""))
         reference_entries = reference_entries.reset_index(drop=True)
         for i, row in reference_entries.iterrows():
             reference_sequences[i] = self._get_amino_text_sequence_of(row)
