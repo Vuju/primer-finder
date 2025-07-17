@@ -32,6 +32,9 @@ class EyeBOLDConnector(Connector):
         self.default_batch_size = config["database"]["database_batch_size"]
         self.input_sequence_column_name = config["database"]["sequence_column_name"]
         self.cutoff = config["algorithm"]["smith_waterman_score_cutoff"]
+        self.filter_rank = config["algorithm"]["taxonomic_filter_rank"]
+        self.filter_name = config["algorithm"]["taxonomic_filter_name"]
+        self.filter_column = self.__parse_filter()
 
         self.__number_of_sequences = None
         self.db_path = db_path
@@ -253,6 +256,29 @@ class EyeBOLDConnector(Connector):
                 return -2
         return 0
 
+    def __parse_filter(self):
+        match self.filter_rank:
+            case "Kingdom":
+                return "taxon_kingdom"
+            case "Phylum":
+                return "taxon_phylum"
+            case "Class":
+                return "taxon_class"
+            case "Order":
+                return "taxon_order"
+            case "Family":
+                return "taxon_family"
+            case "Sub-Family":
+                return "taxon_subfamily"
+            case "Tribe":
+                return "taxon_tribe"
+            case "Genus":
+                return "taxon_genus"
+            case "Species":
+                return "taxon_species"
+            case _:
+                return None
+
     def __init_db_connection(self):
         if not os.path.exists(self.db_path):
             raise FileNotFoundError(f"File {self.db_path} does not exist")
@@ -281,6 +307,9 @@ class EyeBOLDConnector(Connector):
             "taxon_order",
             "taxon_class",
         }
+
+        if self.filter_column and self.filter_column not in other_required_columns:
+            other_required_columns.add(self.filter_column)
 
         if self.input_id_column_name not in existing_columns:
             if "specimenid" in existing_columns:
@@ -498,10 +527,15 @@ class EyeBOLDConnector(Connector):
                 FROM primer_pairs pp
                     LEFT JOIN primer_matches fm ON pp.forward_match_id = fm.match_id
                     LEFT JOIN primer_matches rm ON pp.reverse_match_id = rm.match_id
-                    LEFT JOIN specimen s ON pp.specimen_id = s.specimenid
+                    LEFT JOIN specimen s ON pp.specimen_id = s.{self.input_id_column_name}
                 WHERE fm.primer_sequence = ?
-                  AND rm.primer_sequence = ?;
+                  AND rm.primer_sequence = ?
             """
+        if self.filter_column:
+            creation_query += f" AND s.{self.filter_column} = '{self.filter_name}';"
+        else:
+            creation_query += ";"
+
         override_query = """
             UPDATE primer_taxonomic_groups
             SET orf_aa    = NULL,

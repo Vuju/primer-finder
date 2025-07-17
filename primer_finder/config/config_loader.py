@@ -169,9 +169,9 @@ class ConfigLoader:
         
         # Validate algorithm parameters
         required_algorithm_params = [
-            "search_area", "smith_waterman_score_cutoff", "gap_penalty",
-            "triplet_gap_penalty", "end_of_read_bonus", "orf_matching_lower_threshold",
-            "orf_matching_upper_threshold", "protein_translation_table", "e_value"
+            "search_area", "smith_waterman_score_cutoff", "gap_penalty", "triplet_gap_penalty",
+            "end_of_read_bonus", "orf_matching_lower_threshold", "orf_matching_upper_threshold",
+            "protein_translation_table", "e_value", "taxonomic_filter_rank", "taxonomic_filter_name"
         ]
         for param in required_algorithm_params:
             if param not in self.config["algorithm"]:

@@ -44,6 +44,8 @@ algorithm:
   
   # Protein translation table for "Bio.Seq.translate". Can be an NCBI index or name.
   protein_translation_table: 5
+  taxonomic_filter_rank: null
+  taxonomic_filter_name: null
   
   # E-value for BLAST searches
   e_value: 1000
