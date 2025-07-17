@@ -11,6 +11,7 @@ database:  # only necessary if input is a db file.
   input_table_name: "specimen"
   id_column_name: "specimenid"
   sequence_column_name: "nuc_san"
+  database_batch_size: 50000
 
 # Logger settings
 logging:
@@ -52,4 +53,3 @@ parallelization:
   # Set to null to select the maximum number for your cpu.
   num_threads: null
   chunk_size: 100
-  database_batch_size: 50000

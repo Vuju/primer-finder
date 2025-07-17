@@ -152,8 +152,8 @@ class ConfigLoader:
                 raise ConfigurationError(f"Missing required path: {path_key}")
 
         # Validate database
-        required_paths = ["input_table_name", "id_column_name", "sequence_column_name"]
-        for path_key in required_paths:
+        required_for_database = ["input_table_name", "id_column_name", "sequence_column_name", "database_batch_size"]
+        for path_key in required_for_database:
             if path_key not in self.config["database"]:
                 raise ConfigurationError(f"Missing required database path: {path_key}")
         
@@ -178,7 +178,7 @@ class ConfigLoader:
                 raise ConfigurationError(f"Missing required algorithm parameter: {param}")
         
         # Validate parallelization settings
-        required_parallelization_params = ["num_threads", "chunk_size", "database_batch_size"]
+        required_parallelization_params = ["num_threads", "chunk_size"]
         for param in required_parallelization_params:
             if param not in self.config["parallelization"]:
                 raise ConfigurationError(f"Missing required parallelization parameter: {param}")

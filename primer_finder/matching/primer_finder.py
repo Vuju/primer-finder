@@ -53,7 +53,7 @@ class PrimerFinder:
         self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
         self.custom_num_threads = custom_num_threads or config["parallelization"]["num_threads"]
         self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
-        self.db_batch_size = config["parallelization"]["database_batch_size"]
+        self.db_batch_size = config["database"]["database_batch_size"] # todo: this should not be here
         self.primer_data = []
         self.connector = connector
         self.smith_waterman = smith_waterman or SmithWaterman()

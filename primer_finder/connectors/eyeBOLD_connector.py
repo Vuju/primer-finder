@@ -29,9 +29,9 @@ class EyeBOLDConnector(Connector):
         self.override = config["features"]["override"]
         self.input_table_name = table_name or config["database"]["input_table_name"]
         self.input_id_column_name = config["database"]["id_column_name"]
+        self.default_batch_size = config["database"]["database_batch_size"]
         self.input_sequence_column_name = config["database"]["sequence_column_name"]
         self.cutoff = config["algorithm"]["smith_waterman_score_cutoff"]
-        self.default_batch_size = config["parallelization"]["database_batch_size"]
 
         self.__number_of_sequences = None
         self.db_path = db_path
