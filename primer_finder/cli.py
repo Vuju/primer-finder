@@ -13,7 +13,6 @@ enable_primer_finder = config["features"]["enable_primer_finder"]
 enable_orf_decider = config["features"]["enable_orf_finder"]
 log_path = config["paths"]["log_file"]
 input_file_path = config["paths"]["input_file"]
-output_file_path = config["paths"]["output_file"] if "output_file" in config["paths"] else None
 db_table_name = config["database"]["table_name"] if "table_name" in config["database"] else None
 
 from primer_finder.matching.primer_finder import PrimerFinder
@@ -41,11 +40,6 @@ def parse_args():
         "--input", "-i", 
         default=input_file_path,
         help=f"Input file path (default: {input_file_path})"
-    )
-    parser.add_argument(
-        "--output", "-o", 
-        default=output_file_path,
-        help=f"Output file path (default: {output_file_path})"
     )
     parser.add_argument(
         "--table_name", "-t",
@@ -109,7 +103,6 @@ def main():
         logger.warning("No input file provided.")
         args.input = input("Please enter the input file path: ").strip()
     connector_args = {
-        "output_file": args.output,
         "db_table_name": args.table_name,
     }
     connector = get_connector(input_file_path=args.input, connector_args=connector_args)

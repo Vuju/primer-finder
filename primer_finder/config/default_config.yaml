@@ -6,7 +6,6 @@ paths:
   muscle: null
   log_file: "primer-finder_log.log"
   input_file: null
-  output_file: null # only necessary if input is a fasta file.
 
 database:  # only necessary if input is a db file.
   input_table_name: "specimen"

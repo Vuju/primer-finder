@@ -146,7 +146,7 @@ class ConfigLoader:
                 raise ConfigurationError(f"Missing required configuration section: {section}")
         
         # Validate paths
-        required_paths = ["primer_information", "input_file", "output_file", "log_file"]
+        required_paths = ["primer_information", "muscle", "input_file", "log_file"]
         for path_key in required_paths:
             if path_key not in self.config["paths"]:
                 raise ConfigurationError(f"Missing required path: {path_key}")
