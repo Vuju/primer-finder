@@ -22,7 +22,7 @@ def _decrypt_po(possible_orf: int) -> list[int]:
     return [i for i in range(possible_orf.bit_length()) if possible_orf & (1 << i)]
 
 
-class DbConnector(Connector):
+class EyeBOLDConnector(Connector):
 
     def __init__(self,db_path: str, table_name: str = None) -> None:
         config = get_config_loader().get_config()

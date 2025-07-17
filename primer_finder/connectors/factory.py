@@ -1,6 +1,5 @@
 from primer_finder.config import ConfigurationError
-from primer_finder.connectors.db_connector import DbConnector
-from primer_finder.connectors.file_connector import FileConnector
+from primer_finder.connectors.eyeBOLD_connector import EyeBOLDConnector
 
 
 def get_connector(input_file_path: str, connector_args):
@@ -11,13 +10,8 @@ def get_connector(input_file_path: str, connector_args):
     :return:
     """
     match input_file_path.split(".")[-1]:
-        case "fna" | "fasta" | "gz":
-            if "output_file" in connector_args and connector_args["output_file"]:
-                return FileConnector(input_file_path, connector_args["output_file"])
-            else:
-                return FileConnector(input_file_path, "primer_finder_output.csv")
         case "db":
-            return DbConnector(input_file_path, connector_args["db_table_name"])
+            return EyeBOLDConnector(input_file_path, connector_args["db_table_name"])
         case _:
             raise ConfigurationError(f"Unknown input type: {input_file_path.split(".")[-1]}.\n"
-                                     f"Currently supported: db (and formerly: fna, fasta, gz)")
+                                     f"Currently supported extension: .db (eyeBOLD: sqlite3)")
