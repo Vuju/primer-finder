@@ -91,14 +91,9 @@ class Connector(ABC):
         pass
 
     @abstractmethod
-    def init_temp_pairs_table(self, forward_primer_seq, reverse_primer_seq):
+    def setup_orf_module(self, forward_primer_seq, reverse_primer_seq):
         pass
 
     @abstractmethod
-    def primer_pairs_writeback(self):
+    def cleanup_orf_module(self):
         pass
-    
-    @abstractmethod
-    def remove_temp_table(self):
-        pass
-

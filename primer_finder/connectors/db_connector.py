@@ -103,6 +103,9 @@ class DbConnector(Connector):
         offset = 0
         db = sqlite3.connect(self.db_path)
 
+        if not self.override:
+            db.execute("CREATE INDEX IF NOT EXISTS idx_match_spec_id ON primer_matches(specimen_id)")
+
         while True:
             # Add pagination to the query
             pagination_query = f"{query} LIMIT {batch_size} OFFSET {offset}"
@@ -457,7 +460,7 @@ class DbConnector(Connector):
     def fetch_unsolved_related_sequences(self, current_entry, level):
         return self._fetch_any_related_sequences(current_entry, level, False)
 
-    def init_temp_pairs_table(self, forward_primer_seq, reverse_primer_seq):
+    def setup_orf_module(self, forward_primer_seq, reverse_primer_seq):
         conn = sqlite3.connect(self.db_path)
         self.remove_temp_table()
         creation_query = f"""
@@ -550,7 +553,7 @@ class DbConnector(Connector):
         finally:
             conn.close()
 
-    def primer_pairs_writeback(self, batch_size = None):
+    def cleanup_orf_module(self, batch_size = None):
         if batch_size is None:
             batch_size = self.default_batch_size
 

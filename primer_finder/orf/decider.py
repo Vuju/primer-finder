@@ -72,7 +72,7 @@ class OrfDecider:
             failed = 0
 
             logger.info(f"Solving orfs for {primer_datum.forward_primer} and {primer_datum.backward_primer}.")
-            self.connector.init_temp_pairs_table(primer_datum.forward_primer, primer_datum.backward_primer)
+            self.connector.setup_orf_module(primer_datum.forward_primer, primer_datum.backward_primer)
 
             count = self.connector.get_number_of_sequences()
             # while this gets the number of specimen, this should be equal as there should be 1 pp per spec
@@ -154,7 +154,7 @@ class OrfDecider:
             logger.info(f"{failed} entries were not matched successfully.")
             logger.info(f"A total of {self.cases_for_which_empty_query_was_created} cases were dropped because of an empty query.")
             logger.info(f"Starting writeback. This may take a moment.")
-            self.connector.primer_pairs_writeback()
+            self.connector.cleanup_orf_module()
             logger.info("Writeback complete.")
             # self.connector.remove_temp_table()
 
