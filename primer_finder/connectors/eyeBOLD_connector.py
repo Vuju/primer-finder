@@ -262,8 +262,36 @@ class EyeBOLDConnector(Connector):
         db.close()
 
     def __ensure_input_table_exists(self):
-        # todo probably check whether columns exist in input specimen table:
-        pass
+        db = sqlite3.connect(self.db_path)
+        cursor = db.cursor()
+        cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.input_table_name}'")
+        table_exists = cursor.fetchone() is not None
+        if not table_exists:
+            logger.error("Input table not found")
+            raise Exception("Input table not found")
+
+        cursor.execute(f"PRAGMA table_info({self.input_table_name})")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+
+        other_required_columns = {
+            self.input_sequence_column_name,
+            "taxon_genus",
+            "taxon_species",
+            "taxon_family",
+            "taxon_order",
+            "taxon_class",
+        }
+
+        if self.input_id_column_name not in existing_columns:
+            if "specimenid" in existing_columns:
+                cursor.execute(f"ALTER TABLE {self.input_table_name} RENAME COLUMN specimenid TO {self.input_id_column_name}")
+            else:
+                raise Exception(f"No {self.input_id_column_name} column found in {self.input_table_name}")
+
+        for column in other_required_columns:
+            if column not in existing_columns:
+                raise Exception(f"No {column} column found in {self.input_table_name}")
+
     def __ensure_primer_matches_table_exists(self):
         db = sqlite3.connect(self.db_path)
         cursor = db.cursor()
