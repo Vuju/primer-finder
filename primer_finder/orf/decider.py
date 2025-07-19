@@ -10,7 +10,7 @@ from Bio.Seq import Seq
 from tqdm import tqdm
 
 from primer_finder.connectors.base import Connector
-from primer_finder.config.config_loader import get_config_loader, get_primer_information
+from primer_finder.config.config_loader import get_config_loader, get_search_parameter_objects
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,11 @@ class OrfDecider:
     def __init__(self,
                  connector: Connector,
                  chunk_size: int = None,
-                 translation_table = None,
                  muscle_path = None,
-                 primer_path = None,
                  e_value_threshold = None,
                  lower_reference_threshold: int = None,
                  upper_reference_threshold: int = None,
+                 search_parameter_groups = None,
     ):
         """
         an instance of the OrfFinder class. Parameters should be set on initialization.
@@ -47,13 +46,12 @@ class OrfDecider:
         config = get_config_loader().get_config()
         self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
         self.muscle_path = muscle_path or config["paths"]["muscle"]
-        self.primer_information_file = primer_path or config["paths"]["primer_information"]
-        self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
         self.e_value_threshold = e_value_threshold or config["algorithm"]["e_value"]
         self.lower_reference_threshold = lower_reference_threshold or config["algorithm"]["orf_matching_lower_threshold"]
         self.upper_reference_threshold = upper_reference_threshold or config["algorithm"]["orf_matching_upper_threshold"]
+        self.search_parameter_groups = search_parameter_groups or get_search_parameter_objects()
 
-        self.primer_data = []
+        self.translation_table = None
         self.trivial_counter = 0
         self.cases_for_which_empty_query_was_created = 0
 
@@ -61,9 +59,8 @@ class OrfDecider:
         """
         Process and solve all ORFs using the provided connector for data operations.
         """
-        get_primer_information(self.primer_information_file, self.primer_data)
-
-        for primer_datum in self.primer_data:
+        for search_parameters in self.search_parameter_groups:
+            self.translation_table = search_parameters.protein_translation_table
             # Statistics tracking
             self.trivial_counter = 0
             self.cases_for_which_empty_query_was_created = 0
@@ -71,8 +68,8 @@ class OrfDecider:
             not_enough_references = 0
             failed = 0
 
-            logger.info(f"Solving orfs for {primer_datum.forward_primer} and {primer_datum.backward_primer}.")
-            self.connector.setup_orf_module(primer_datum.forward_primer, primer_datum.backward_primer)
+            logger.info(f"Solving orfs for {search_parameters.forward_primer} and {search_parameters.reverse_primer}.")
+            self.connector.setup_orf_module(search_parameters)
 
             count = self.connector.get_number_of_pairs_to_decide()
             # while this gets the number of specimen, this should be equal as there should be 1 pp per spec

@@ -9,6 +9,7 @@ from typing import Generator, Any
 import pandas as pd
 from tqdm import tqdm
 
+from matching.dtos.primer_data_dto import SearchParameterObject
 from primer_finder.config import get_config_loader
 from primer_finder.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
@@ -24,21 +25,19 @@ def _decrypt_po(possible_orf: int) -> list[int]:
 
 class EyeBOLDConnector(Connector):
 
-    def __init__(self,db_path: str, table_name: str = None) -> None:
+    def __init__(self, db_path: str, table_name: str = None) -> None:
+        self.db_path = db_path
+
         config = get_config_loader().get_config()
         self.override = config["features"]["override"]
         self.input_table_name = table_name or config["database"]["input_table_name"]
         self.input_id_column_name = config["database"]["id_column_name"]
-        self.default_batch_size = config["database"]["database_batch_size"]
         self.input_sequence_column_name = config["database"]["sequence_column_name"]
-        self.cutoff = config["algorithm"]["smith_waterman_score_cutoff"]
-        self.filter_rank = config["algorithm"]["taxonomic_filter_rank"]
-        self.filter_name = config["algorithm"]["taxonomic_filter_name"]
-        self.filter_column = self.__parse_filter()
+        self.default_batch_size = config["database"]["database_batch_size"]
 
         self.__number_of_sequences = None
         self.__number_of_sequences_filtered = None
-        self.db_path = db_path
+
         self.__init_db_connection()
         self.__ensure_input_table_exists()
         self.__ensure_primer_matches_table_exists()
@@ -153,6 +152,8 @@ class EyeBOLDConnector(Connector):
             offset += batch_size
 
         # Close the database connection
+        db.execute("DROP INDEX IF EXISTS idx_match_spec_id")
+        db.commit()
         db.close()
 
     def write_output(self, _, information):
@@ -245,40 +246,18 @@ class EyeBOLDConnector(Connector):
             cursor.close()
             db.close()
 
-    def _set_flags(self, forward_match, backward_match) -> int:
-        f_cutoff = self.cutoff * 2 * len(forward_match.primer_sequence) # this expects 2 to be the default reward for a match!!
-        b_cutoff = self.cutoff * 2 * len(backward_match.primer_sequence)
-        if forward_match.score < f_cutoff:
-            if backward_match.score < b_cutoff:
+    def _set_flags(self, forward_match: MatchResultDTO, reverse_match: MatchResultDTO) -> int:
+        # todo: let Match result DTOs calculate that themselves
+        forward_absolute_cutoff = forward_match.quality_cutoff * 2 * len(forward_match.primer_sequence) # this expects 2 to be the default reward for a match!!
+        reverse_absolute_cutoff = reverse_match.quality_cutoff * 2 * len(reverse_match.primer_sequence)
+        if forward_match.score < forward_absolute_cutoff:
+            if reverse_match.score < reverse_absolute_cutoff:
                 return -3
             return -1
         else:
-            if backward_match.score < b_cutoff:
+            if reverse_match.score < reverse_absolute_cutoff:
                 return -2
         return 0
-
-    def __parse_filter(self):
-        match self.filter_rank:
-            case "Kingdom":
-                return "taxon_kingdom"
-            case "Phylum":
-                return "taxon_phylum"
-            case "Class":
-                return "taxon_class"
-            case "Order":
-                return "taxon_order"
-            case "Family":
-                return "taxon_family"
-            case "Sub-Family":
-                return "taxon_subfamily"
-            case "Tribe":
-                return "taxon_tribe"
-            case "Genus":
-                return "taxon_genus"
-            case "Species":
-                return "taxon_species"
-            case _:
-                return None
 
     def __init_db_connection(self):
         if not os.path.exists(self.db_path):
@@ -302,15 +281,16 @@ class EyeBOLDConnector(Connector):
 
         other_required_columns = {
             self.input_sequence_column_name,
-            "taxon_genus",
             "taxon_species",
+            "taxon_genus",
+            "taxon_tribe",
+            "taxon_subfamily",
             "taxon_family",
             "taxon_order",
             "taxon_class",
+            "taxon_phylum",
+            "taxon_kingdom",
         }
-
-        if self.filter_column and self.filter_column not in other_required_columns:
-            other_required_columns.add(self.filter_column)
 
         if self.input_id_column_name not in existing_columns:
             if "specimenid" in existing_columns:
@@ -360,8 +340,7 @@ class EyeBOLDConnector(Connector):
 
         for column, data_type in required_columns.items():
             if column not in existing_columns:
-                # todo extend for a check for missing primary and foreign key, as those cant be added later
-                cursor.execute(f"ALTER TABLE primer_matches ADD COLUMN {column} {data_type}")
+                logger.error(f"Found missing column {column} in primer_matches table. Corrupt database.")
 
 
         db.commit()
@@ -417,7 +396,8 @@ class EyeBOLDConnector(Connector):
         }
         for column, data_type in required_columns.items():
             if column not in existing_columns:
-                cursor.execute(f"ALTER TABLE primer_pairs ADD COLUMN {column} {data_type}")
+                logger.error(f"Found missing column {column} in primer_pairs table. Corrupt database.")
+
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_orf_index ON primer_pairs(orf_index)")
         db.commit()
         db.close()
@@ -518,7 +498,7 @@ class EyeBOLDConnector(Connector):
     def fetch_unsolved_related_sequences(self, current_entry, level):
         return self._fetch_any_related_sequences(current_entry, level, False)
 
-    def setup_orf_module(self, forward_primer_seq, reverse_primer_seq):
+    def setup_orf_module(self, search_parameters: SearchParameterObject):
         conn = sqlite3.connect(self.db_path)
         self.remove_temp_table()
         creation_query = f"""
@@ -532,8 +512,9 @@ class EyeBOLDConnector(Connector):
                 WHERE fm.primer_sequence = ?
                   AND rm.primer_sequence = ?
             """
-        if self.filter_column:
-            creation_query += f" AND s.{self.filter_column} = '{self.filter_name}'"
+        if search_parameters.taxonomic_filter_rank:
+            filter_column = _parse_filter(search_parameters.taxonomic_filter_rank)
+            creation_query += f" AND s.{filter_column} = '{search_parameters.taxonomic_filter_name}'"
 
         override_query = """
             UPDATE primer_taxonomic_groups
@@ -541,7 +522,7 @@ class EyeBOLDConnector(Connector):
                 orf_index = NULL
             """
 
-        logger.info(f"Creating temp pairs table for {forward_primer_seq} and {reverse_primer_seq}. This may take a while.")
+        logger.info(f"Creating temp pairs table for {search_parameters.forward_primer} and {search_parameters.reverse_primer}. This may take a while.")
         logger.info("Since this cant be properly measured, here is at least a timer:")
 
         progress_done = False
@@ -555,7 +536,7 @@ class EyeBOLDConnector(Connector):
         progress_thread = threading.Thread(target=show_progress)
         progress_thread.start()
         try:
-            conn.execute(creation_query,(forward_primer_seq, reverse_primer_seq))
+            conn.execute(creation_query,(search_parameters.forward_primer, search_parameters.reverse_primer))
         finally:
             progress_done = True
             progress_thread.join()
@@ -665,3 +646,26 @@ class EyeBOLDConnector(Connector):
             progress_thread.join()
             print("\n")
             conn.close()
+
+def _parse_filter(rank):
+    match rank:
+        case "Kingdom":
+            return "taxon_kingdom"
+        case "Phylum":
+            return "taxon_phylum"
+        case "Class":
+            return "taxon_class"
+        case "Order":
+            return "taxon_order"
+        case "Family":
+            return "taxon_family"
+        case "Sub-Family":
+            return "taxon_subfamily"
+        case "Tribe":
+            return "taxon_tribe"
+        case "Genus":
+            return "taxon_genus"
+        case "Species":
+            return "taxon_species"
+        case _:
+            return None

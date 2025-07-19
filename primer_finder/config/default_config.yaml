@@ -7,7 +7,7 @@ paths:
   log_file: "primer-finder_log.log"
   input_file: null
 
-database:  # only necessary if input is a db file.
+database:
   input_table_name: "specimen"
   id_column_name: "specimenid"
   sequence_column_name: "nuc_san"
@@ -15,7 +15,8 @@ database:  # only necessary if input is a db file.
 
 # Logger settings
 logging:
-  level: 20  # 20 corresponds to logging.INFO
+  # level 20 corresponds to logging.INFO
+  level: 20
 
 # Feature toggles
 features:
@@ -28,30 +29,34 @@ algorithm:
   # Limit the area to search for a second primer, when the first was found.
   # Percentage of the distance between the primers.
   search_area: 0.2
-  
-  # Percentage of maximum score. If a match is better,
-  # The search area for the other primer will be limited.
-  smith_waterman_score_cutoff: 0.8
-  
+
   # Values for Smith-Waterman Scoring
   gap_penalty: -2
   triplet_gap_penalty: -2
   end_of_read_bonus: 1
-  
+
   # Limit the number of sequences that a possible orf will be compared to.
   orf_matching_lower_threshold: 10
   orf_matching_upper_threshold: 50
-  
-  # Protein translation table for "Bio.Seq.translate". Can be an NCBI index or name.
-  protein_translation_table: 5
-  taxonomic_filter_rank: null
-  taxonomic_filter_name: null
-  
+
   # E-value for BLAST searches
   e_value: 1000
 
 # Parallelization settings
 parallelization:
-  # Set to null to select the maximum number for your cpu.
+  # Set num_threads to null to select the maximum number for your cpu.
   num_threads: null
   chunk_size: 100
+
+search_parameters:
+  # example settings: ??? and ??? for the COI region in Arthropods.
+  # Cutoffs are a percentage of the maximum score. If a match is better,
+  # The search area for the other primer will be limited.
+  - forward_primer: "GGDACWGGWTGAACWGTWTAYCCHCC"
+    forward_cutoff: 0.7
+    reverse_primer: "CCWGTWYTAGCHGGDGCWATYAC"
+    reverse_cutoff: 0.6
+    distance: 205
+    protein_translation_table: 5 # Protein translation table for "Bio.Seq.translate". Can be an NCBI index or name.
+    taxonomic_filter_rank: "Phylum"
+    taxonomic_filter_name: "Arthropoda"

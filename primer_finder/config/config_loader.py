@@ -5,7 +5,7 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
-from primer_finder.matching.dtos.primer_data_dto import primer_info_from_string, PrimerDataDTO
+from primer_finder.matching.dtos.primer_data_dto import primer_info_from_config, SearchParameterObject
 
 # Type alias for configuration
 Config = Dict[str, Any]
@@ -34,8 +34,8 @@ class ConfigLoader:
         """
         Initialize the configuration loader.
 
-        config_path: Path to the configuration file. If None, checks CLI args
-            for -c/--config flag, then falls back to default configuration file.
+        :arg: config_path: Path to the configuration file. If None, checks CLI args
+                for -c/--config flag, then falls back to default configuration file.
         """
         if config_path is None:
             config_path = self._get_config_from_cli()
@@ -58,11 +58,8 @@ class ConfigLoader:
         """
         Load configuration from a YAML file.
         
-        Returns:
-            The loaded configuration.
-            
-        Raises:
-            ConfigurationError: If the configuration file cannot be loaded.
+        :returns: The loaded configuration.
+        :raises: ConfigurationError: If the configuration file cannot be loaded.
         """
         try:
             with open(self.config_path, "r") as f:
@@ -109,14 +106,11 @@ class ConfigLoader:
     def _set_nested_value(self, config: Dict[str, Any], key_path: List[str], value: Any) -> None:
         """
         Set a nested value in the configuration.
-        
-        Args:
-            config: The configuration dictionary.
-            key_path: List of keys to navigate to the target value.
-            value: The value to set.
-            
-        Raises:
-            ConfigurationError: If the key path is invalid.
+
+        :arg: config: The configuration dictionary.
+        :arg: key_path: List of keys to navigate to the target value.
+        :arg: value: The value to set.
+        :raises: ConfigurationError: If the key path is invalid.
         """
         if not key_path:
             return
@@ -136,11 +130,10 @@ class ConfigLoader:
     def _validate_config(self) -> None:
         """
         Validate the configuration.
-        
-        Raises:
-            ConfigurationError: If the configuration is invalid.
+
+        :raises: ConfigurationError: If the configuration is invalid.
         """
-        required_sections = ["paths", "database", "logging", "features", "algorithm", "parallelization"]
+        required_sections = ["paths", "database", "logging", "features", "algorithm", "parallelization", "query_parameters"]
         for section in required_sections:
             if section not in self.config:
                 raise ConfigurationError(f"Missing required configuration section: {section}")
@@ -169,9 +162,8 @@ class ConfigLoader:
         
         # Validate algorithm parameters
         required_algorithm_params = [
-            "search_area", "smith_waterman_score_cutoff", "gap_penalty", "triplet_gap_penalty",
-            "end_of_read_bonus", "orf_matching_lower_threshold", "orf_matching_upper_threshold",
-            "protein_translation_table", "e_value", "taxonomic_filter_rank", "taxonomic_filter_name"
+            "search_area", "gap_penalty", "triplet_gap_penalty", "end_of_read_bonus",
+            "orf_matching_lower_threshold", "orf_matching_upper_threshold", "e_value"
         ]
         for param in required_algorithm_params:
             if param not in self.config["algorithm"]:
@@ -182,36 +174,38 @@ class ConfigLoader:
         for param in required_parallelization_params:
             if param not in self.config["parallelization"]:
                 raise ConfigurationError(f"Missing required parallelization parameter: {param}")
+
+        # Validate search parameters
+        required_search_parameters = ["forward_primer", "forward_cutoff", "reverse_primer", "reverse_cutoff",
+                                      "distance", "protein_translation_table", "taxonomic_filter_rank",
+                                      "taxonomic_filter_name"]
+        for parameter_group in self.config["query_parameters"]:
+            for parameter in required_search_parameters:
+                if parameter not in parameter_group:
+                    raise ConfigurationError(f"Missing required query parameter: {parameter}")
     
     def get_config(self) -> Config:
         """
         Get the complete configuration.
-        
-        Returns:
-            The complete configuration.
+        :returns: The complete configuration.
         """
         return self.config
 
     def get_cli_config(self) -> tuple[Config, bool]:
         """
         Get the complete configuration. And a flag whether the configuration is the default or not.
-
-        Returns:
-            The complete configuration.
+        :returns: The complete configuration.
         """
         return self.config, self.using_default_config
     
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """
         Get a configuration value.
-        
-        Args:
-            section: The configuration section.
-            key: The configuration key.
-            default: The default value to return if the key is not found.
-            
-        Returns:
-            The configuration value, or the default value if not found.
+
+        :arg: section: The configuration section.
+        :arg: key: The configuration key.
+        :arg: default: The default value to return if the key is not found.
+        :returns: The configuration value, or the default value if not found.
         """
         if section not in self.config:
             return default
@@ -225,13 +219,8 @@ _config_loader = None
 def get_config_loader(config_path: Optional[Union[str, Path]] = None) -> ConfigLoader:
     """
     Get the configuration loader instance.
-    
-    Args:
-        config_path: Path to the configuration file. If None, the default
-            configuration file is used.
-            
-    Returns:
-        The configuration loader instance.
+    :arg: config_path: Path to the configuration file. If None, the default configuration file is used.
+    :return: The configuration loader instance.
     """
     global _config_loader
     if _config_loader is None or config_path is not None:
@@ -239,8 +228,13 @@ def get_config_loader(config_path: Optional[Union[str, Path]] = None) -> ConfigL
     return _config_loader
 
 
-def get_primer_information(primer_information_file, primer_data):
-    with open(primer_information_file, "r") as primer_info_file:
-        for line in primer_info_file.readlines():
-            entry = primer_info_from_string(line)
-            primer_data.append(entry)
+def get_search_parameter_objects() -> List[SearchParameterObject]:
+    """
+    loads all search parameters from the config into a list of search parameter objects
+    :return: a list of search parameter objects
+    """
+    list_of_parameter_dtos = []
+    config = get_config_loader().get_config()
+    for element in config["query_parameters"]:
+        list_of_parameter_dtos.append(primer_info_from_config(element))
+    return list_of_parameter_dtos

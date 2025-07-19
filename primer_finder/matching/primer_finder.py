@@ -5,11 +5,11 @@ from multiprocessing import Pool, Lock
 
 from tqdm import tqdm
 
-from primer_finder.config.config_loader import get_config_loader, get_primer_information
+from primer_finder.config.config_loader import get_config_loader, get_search_parameter_objects
 from primer_finder.orf.finder import list_possible_orf
 from primer_finder.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
-from primer_finder.matching.dtos.primer_data_dto import PrimerDataDTO
+from primer_finder.matching.dtos.primer_data_dto import SearchParameterObject
 from primer_finder.matching.regex import find_exact_match
 from primer_finder.matching.smith_waterman import SmithWaterman
 
@@ -37,38 +37,30 @@ class PrimerFinder:
     """
     def __init__(self,
                  connector: Connector,
-                 smith_waterman: SmithWaterman = None,
-                 primer_information_file: str = None,
                  custom_num_threads: int = None,
                  chunk_size: int = None,
                  search_area: float = None,
-                 smith_waterman_score_cutoff: float = None,
-                 translation_table = None,
+                 search_parameter_groups = None,
                  ):
         config = get_config_loader().get_config()
 
-        self.primer_information_file = primer_information_file or config["paths"]["primer_information"]
         self.search_area = search_area or config["algorithm"]["search_area"]
-        self.smith_waterman_score_cutoff = smith_waterman_score_cutoff or config["algorithm"]["smith_waterman_score_cutoff"]
-        self.translation_table = translation_table or config["algorithm"]["protein_translation_table"]
         self.custom_num_threads = custom_num_threads or config["parallelization"]["num_threads"]
         self.chunk_size = chunk_size or config["parallelization"]["chunk_size"]
         self.db_batch_size = config["database"]["database_batch_size"] # todo: this should not be here
-        self.primer_data = []
+        self.search_parameter_groups = search_parameter_groups or get_search_parameter_objects()
         self.connector = connector
-        self.smith_waterman = smith_waterman or SmithWaterman()
+        self.smith_waterman = SmithWaterman()
 
     def find_all_primers(self):
         """
         Executes the primer finder algorithm with the set configuration.
         """
-        get_primer_information(self.primer_information_file, self.primer_data)
-        _lock = Lock()
 
         logger.info("Getting the number of sequences.")
         _total_number_of_sequences = self.connector.get_number_of_sequences()
-        for i, primer_datum in enumerate(self.primer_data):
-            sequences = self.connector.read_sequences(primer_datum.forward_primer, primer_datum.backward_primer)
+        for i, primer_datum in enumerate(self.search_parameter_groups):
+            sequences = self.connector.read_sequences(primer_datum.forward_primer, primer_datum.reverse_primer)
             logger.info(f"Searching input sequences for primer pair {i + 1}.")
             pbar = tqdm(total=_total_number_of_sequences)
             worker = partial(self._process_sequences_chunk, primer_datum)
@@ -87,13 +79,13 @@ class PrimerFinder:
                         time.sleep(5)
             pbar.close()
 
-    def _process_sequences_chunk(self, query: PrimerDataDTO, sequence_list):
+    def _process_sequences_chunk(self, query: SearchParameterObject, sequence_list):
         writeback_values = []
         for sequence_object in sequence_list:
             writeback_values.append(self._process_sequence(query, sequence_object))
         return writeback_values
 
-    def _process_sequence(self, query: PrimerDataDTO, sequence_object):
+    def _process_sequence(self, query: SearchParameterObject, sequence_object):
         _sequence_found = False
         _orf_calculated = 0
 
@@ -101,34 +93,34 @@ class PrimerFinder:
         distance = query.distance
         def __limit_to_interval_after(i: int):
             return (i + distance - offset,
-                    i + distance + len(query.backward_primer) + offset)
+                    i + distance + len(query.reverse_primer) + offset)
         def __limit_to_interval_before(i: int):
             return (max(0, i - distance - len(query.forward_primer) - offset),
                     max(0, i - distance + offset))
 
-        sequence_metadata, dna_sequence, forward_match, backward_match = sequence_object
+        sequence_metadata, dna_sequence, forward_match, reverse_match = sequence_object
 
         if dna_sequence is None:
             return sequence_metadata, MatchResultDTO(), MatchResultDTO(), None, []
         dna_sequence = dna_sequence.strip()
-        forward_search_interval, backward_search_interval = (0, len(dna_sequence)), (0, len(dna_sequence))
+        forward_search_interval, reverse_search_interval = (0, len(dna_sequence)), (0, len(dna_sequence))
 
         ## first check for exact matches
         if forward_match.is_mismatch():
             forward_match = self._compute_regex_match(query.forward_primer,
                                                       query.forward_primer_regex,
                                                       dna_sequence)
-        if backward_match.is_mismatch():
+        if reverse_match.is_mismatch():
             if not forward_match.is_mismatch():
-                backward_search_interval = __limit_to_interval_after(forward_match.end_index)
+                reverse_search_interval = __limit_to_interval_after(forward_match.end_index)
 
-            backward_match = self._compute_regex_match(query.backward_primer,
-                                                       query.backward_primer_regex,
-                                                       dna_sequence[backward_search_interval[0]:backward_search_interval[1]])
-            if not backward_match.is_mismatch():
-                backward_match.start_index += backward_search_interval[0]
-                backward_match.end_index += backward_search_interval[0]
-                forward_search_interval = __limit_to_interval_before(backward_match.start_index)
+            reverse_match = self._compute_regex_match(query.reverse_primer,
+                                                       query.reverse_primer_regex,
+                                                       dna_sequence[reverse_search_interval[0]:reverse_search_interval[1]])
+            if not reverse_match.is_mismatch():
+                reverse_match.start_index += reverse_search_interval[0]
+                reverse_match.end_index += reverse_search_interval[0]
+                forward_search_interval = __limit_to_interval_before(reverse_match.start_index)
 
         ## for each missing exact match, try smith waterman:
         if forward_match.is_mismatch():
@@ -139,28 +131,31 @@ class PrimerFinder:
             )
             score_threshold = (len(query.forward_primer)
                                * self.smith_waterman.match_value
-                               * self.smith_waterman_score_cutoff)
+                               * query.forward_cutoff)
 
-            if backward_match.is_mismatch() and (forward_match.score > score_threshold):
-                backward_search_interval = __limit_to_interval_after(forward_match.end_index)
+            if reverse_match.is_mismatch() and (forward_match.score > score_threshold):
+                reverse_search_interval = __limit_to_interval_after(forward_match.end_index)
 
-        if backward_match.is_mismatch():
-            backward_match = self.smith_waterman.align_partial(
-                primer=query.backward_primer,
+        if reverse_match.is_mismatch():
+            reverse_match = self.smith_waterman.align_partial(
+                primer=query.reverse_primer,
                 super_sequence=dna_sequence,
-                search_interval=backward_search_interval
+                search_interval=reverse_search_interval
             )
 
         ## work on getting the orf
-        inter_primer_region = dna_sequence[forward_match.end_index:backward_match.start_index]
+        inter_primer_region = dna_sequence[forward_match.end_index:reverse_match.start_index]
         _sequence_found = len(inter_primer_region.strip()) > 0
 
         possible_orfs = []
         if _sequence_found:
-            possible_orfs = list_possible_orf(inter_primer_region, translation_table=self.translation_table)
+            possible_orfs = list_possible_orf(inter_primer_region, translation_table=query.protein_translation_table)
             possible_orfs = ([]) if len(possible_orfs) == 0 else possible_orfs
 
-        return sequence_metadata, forward_match, backward_match, inter_primer_region, possible_orfs
+        forward_match.quality_cutoff = query.forward_cutoff
+        reverse_match.quality_cutoff = query.reverse_cutoff
+
+        return sequence_metadata, forward_match, reverse_match, inter_primer_region, possible_orfs
 
     def _compute_regex_match(self, primer, primer_regex, read):
         score = 0

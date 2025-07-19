@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Generator, Tuple, Any
 
+from matching.dtos.primer_data_dto import SearchParameterObject
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
 
@@ -96,7 +97,7 @@ class Connector(ABC):
         pass
 
     @abstractmethod
-    def setup_orf_module(self, forward_primer_seq, reverse_primer_seq):
+    def setup_orf_module(self, search_parameters: SearchParameterObject):
         pass
 
     @abstractmethod

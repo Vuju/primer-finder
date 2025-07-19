@@ -10,6 +10,7 @@ class MatchResultDTO:
     start_index: int = -1
     end_index: int = -1
     primer_sequence: str = ''
+    quality_cutoff: float = 0.7
 
     def is_mismatch(self):
         """
