@@ -16,6 +16,7 @@ def list_possible_orf(sequence, translation_table):
         framed_sequence = dna[frame:]
         framed_sequence = _trim_to_triplet(framed_sequence)
         protein = framed_sequence.translate(table=translation_table)
-        if '*' not in protein:          # The "*" character denotes a stop command in the amino-acid sequence.
-            orf_list.append(frame)
+        if '*' not in protein: # The "*" character denotes a stop command in the amino-acid sequence.
+            if 'X' not in protein : # And "X" is "unknown"
+                orf_list.append(frame)
     return orf_list
