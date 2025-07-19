@@ -26,25 +26,25 @@ def default_substitution_function(letter_in_primer, letter_in_read) -> float:
         case 'U':
             return 2 if letter_in_read in "TU" else -1
         case 'W':
-            return 2 if letter_in_read in "ATU" else -1
+            return 2 if letter_in_read in "WATU" else -1
         case 'S':
-            return 2 if letter_in_read in "CG" else -1
+            return 2 if letter_in_read in "SCG" else -1
         case 'M':
-            return 2 if letter_in_read in "AC" else -1
+            return 2 if letter_in_read in "MAC" else -1
         case 'K':
-            return 2 if letter_in_read in "GTU" else -1
+            return 2 if letter_in_read in "KGTU" else -1
         case 'R':
-            return 2 if letter_in_read in "AG" else -1
+            return 2 if letter_in_read in "RAG" else -1
         case 'Y':
-            return 2 if letter_in_read in "CTU" else -1
+            return 2 if letter_in_read in "YCTU" else -1
         case 'B':
-            return 2 if letter_in_read in "CGTSKYU" else -1
+            return 2 if letter_in_read in "BCGTSKYU" else -1
         case 'D':
-            return 2 if letter_in_read in "AGTWKRU" else -1
+            return 2 if letter_in_read in "DAGTWKRU" else -1
         case 'H':
-            return 2 if letter_in_read in "ACTWMYU" else -1
+            return 2 if letter_in_read in "HACTWMYU" else -1
         case 'V':
-            return 2 if letter_in_read in "ACGSMR" else -1
+            return 2 if letter_in_read in "VACGSMR" else -1
         case 'N':
             return 2
         case '-':

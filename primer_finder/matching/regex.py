@@ -21,25 +21,25 @@ def regex_builder(initialString):
             case 'U':
                 regexString += "[TU]"
             case 'W':
-                regexString += "[ATU]"
+                regexString += "[WATU]"
             case 'S':
-                regexString += "[CG]"
+                regexString += "[SCG]"
             case 'M':
-                regexString += "[AC]"
+                regexString += "[MAC]"
             case 'K':
-                regexString += "[GTU]"
+                regexString += "[KGTU]"
             case 'R':
-                regexString += "[AG]"
+                regexString += "[RAG]"
             case 'Y':
-                regexString += "[CTU]"
+                regexString += "[YCTU]"
             case 'B':
-                regexString += "[CGTSKYU]"
+                regexString += "[BCGTSKYU]"
             case 'D':
-                regexString += "[AGTWKRU]"
+                regexString += "[DAGTWKRU]"
             case 'H':
-                regexString += "[ACTWMYU]"
+                regexString += "[HACTWMYU]"
             case 'V':
-                regexString += "[ACGSMR]"
+                regexString += "[VACGSMR]"
             case 'N':
                 regexString += "."
             case _:
