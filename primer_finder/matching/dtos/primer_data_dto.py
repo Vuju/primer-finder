@@ -32,7 +32,7 @@ class SearchParameterObject:
             reverse_cutoff: float,
             protein_translation_table: Any,
             forward_primer_regex: str = None,
-            backward_primer_regex: str = None,
+            reverse_primer_regex: str = None,
             taxonomic_filter_rank: str = None,
             taxonomic_filter_name: str = None,
     ):
@@ -44,7 +44,7 @@ class SearchParameterObject:
         self.protein_translation_table = protein_translation_table
 
         self.forward_primer_regex = forward_primer_regex or regex_builder(forward_primer)
-        self.reverse_primer_regex = backward_primer_regex or regex_builder(reverse_primer)
+        self.reverse_primer_regex = reverse_primer_regex or regex_builder(reverse_primer)
 
         self.taxonomic_filter_rank = taxonomic_filter_rank
         self.taxonomic_filter_name = taxonomic_filter_name

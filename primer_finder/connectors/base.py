@@ -10,7 +10,7 @@ class Connector(ABC):
     An abstract base class that defines the interface for all connectors for the primer finder class.
     """
     @abstractmethod
-    def read_sequences(self, forward_primer, backward_primer, batch_size) -> (
+    def read_sequences(self, forward_primer, reverse_primer, batch_size) -> (
             Generator)[tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
         """
         Returns a generator that yields each sequence in the input.
@@ -22,7 +22,7 @@ class Connector(ABC):
         """
         writes all the important information back to the output.
         information should be a list of a big tuple like:
-        [(read_metadata, forward_match, backward_match, inter_primer_sequence, possible_orf)]
+        [(read_metadata, forward_match, reverse_match, inter_primer_sequence, possible_orf)]
         """
         pass
 

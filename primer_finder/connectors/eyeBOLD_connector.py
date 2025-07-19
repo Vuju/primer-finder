@@ -59,7 +59,7 @@ class EyeBOLDConnector(Connector):
     def __get_match_id(self, specimen_id, primer_sequence) -> str:
         return f"{specimen_id}_{primer_sequence}"
 
-    def read_sequences(self, forward_primer, backward_primer, batch_size=None) -> Generator[
+    def read_sequences(self, forward_primer, reverse_primer, batch_size=None) -> Generator[
                         tuple[Any, Any, MatchResultDTO, MatchResultDTO], Any, None]:
         if batch_size is None:
             batch_size = self.default_batch_size
@@ -72,9 +72,9 @@ class EyeBOLDConnector(Connector):
                     NULL as forward_start,
                     NULL as forward_end,
                     NULL as forward_score,
-                    NULL as backward_start,
-                    NULL as backward_end,
-                    NULL as backward_score
+                    NULL as reverse_start,
+                    NULL as reverse_end,
+                    NULL as reverse_score
                 FROM 
                     {self.input_table_name} as input
             """
@@ -86,9 +86,9 @@ class EyeBOLDConnector(Connector):
                         forward_match.primer_start_index as forward_start,
                         forward_match.primer_end_index as forward_end,
                         forward_match.match_score as forward_score,
-                        backward_match.primer_start_index as backward_start,
-                        backward_match.primer_end_index as backward_end,
-                        backward_match.match_score as backward_score
+                        reverse_match.primer_start_index as reverse_start,
+                        reverse_match.primer_end_index as reverse_end,
+                        reverse_match.match_score as reverse_score
                     FROM 
                         {self.input_table_name} as input
                     LEFT JOIN 
@@ -97,10 +97,10 @@ class EyeBOLDConnector(Connector):
                         input.{self.input_id_column_name} = forward_match.specimen_id
                         AND forward_match.primer_sequence = ?
                     LEFT JOIN 
-                        primer_matches as backward_match
+                        primer_matches as reverse_match
                     ON 
-                        input.{self.input_id_column_name} = backward_match.specimen_id
-                        AND backward_match.primer_sequence = ?
+                        input.{self.input_id_column_name} = reverse_match.specimen_id
+                        AND reverse_match.primer_sequence = ?
                 """
 
         offset = 0
@@ -116,7 +116,7 @@ class EyeBOLDConnector(Connector):
             df = pd.read_sql_query(
                 sql=pagination_query,
                 con=db,
-                params= None if self.override else [forward_primer, backward_primer],
+                params= None if self.override else [forward_primer, reverse_primer],
             )
 
             # Break if no more results
@@ -137,16 +137,16 @@ class EyeBOLDConnector(Connector):
                     primer_sequence=forward_primer
                 )
 
-                # Create backward primer match DTO
-                backward_match = MatchResultDTO(
-                    score=row['backward_score'] if pd.notna(row['backward_score']) else -1,
+                # Create reverse primer match DTO
+                reverse_match = MatchResultDTO(
+                    score=row['reverse_score'] if pd.notna(row['reverse_score']) else -1,
                     read=sequence,
-                    start_index=int(row['backward_start']) if pd.notna(row['backward_start']) else -1,
-                    end_index=int(row['backward_end']) if pd.notna(row['backward_end']) else -1,
-                    primer_sequence=backward_primer
+                    start_index=int(row['reverse_start']) if pd.notna(row['reverse_start']) else -1,
+                    end_index=int(row['reverse_end']) if pd.notna(row['reverse_end']) else -1,
+                    primer_sequence=reverse_primer
                 )
 
-                yield specimen_id, sequence, forward_match, backward_match
+                yield specimen_id, sequence, forward_match, reverse_match
 
             # Move to the next batch
             offset += batch_size
