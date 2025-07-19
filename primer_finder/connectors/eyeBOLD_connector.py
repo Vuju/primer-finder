@@ -7,7 +7,6 @@ import time
 from typing import Generator, Any
 
 import pandas as pd
-from tqdm import tqdm
 
 from matching.dtos.primer_data_dto import SearchParameterObject
 from primer_finder.config import get_config_loader

@@ -102,6 +102,7 @@ class PrimerFinder:
 
         if dna_sequence is None:
             return sequence_metadata, MatchResultDTO(), MatchResultDTO(), None, [], query.distance
+
         dna_sequence = dna_sequence.strip()
         forward_search_interval, reverse_search_interval = (0, len(dna_sequence)), (0, len(dna_sequence))
 
@@ -151,6 +152,8 @@ class PrimerFinder:
         if _sequence_found:
             possible_orfs = list_possible_orf(inter_primer_region, translation_table=query.protein_translation_table)
             possible_orfs = ([]) if len(possible_orfs) == 0 else possible_orfs
+        else:
+            inter_primer_region = None
 
         forward_match.quality_cutoff = query.forward_cutoff
         reverse_match.quality_cutoff = query.reverse_cutoff

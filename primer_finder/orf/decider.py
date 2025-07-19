@@ -300,7 +300,7 @@ class OrfDecider:
         if pd.isna(entry["orf_index"]):
             return entry["orf_aa"]
         elif entry["orf_index"] == -1:
-            return ""
+            return None
         else:
             return self._dna_to_aa(entry["inter_primer_sequence"], entry["orf_index"])
 
