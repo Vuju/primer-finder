@@ -37,6 +37,7 @@ class EyeBOLDConnector(Connector):
         self.filter_column = self.__parse_filter()
 
         self.__number_of_sequences = None
+        self.__number_of_sequences_filtered = None
         self.db_path = db_path
         self.__init_db_connection()
         self.__ensure_input_table_exists()
@@ -583,6 +584,20 @@ class EyeBOLDConnector(Connector):
         logger.info("Finished setting up indexes.")
         conn.commit()
         conn.close()
+
+    def get_number_of_pairs_to_decide(self) -> int:
+        if self.__number_of_sequences_filtered is not None:
+            return self.__number_of_sequences_filtered
+
+        query = f"""
+                SELECT COUNT(*) 
+                FROM primer_taxonomic_groups
+                """
+        db = sqlite3.connect(self.db_path)
+        result = db.execute(query)
+        self.__number_of_sequences_filtered = result.fetchone()[0]
+        db.close()
+        return self.__number_of_sequences_filtered
 
     def remove_temp_table(self):
         conn = sqlite3.connect(self.db_path)

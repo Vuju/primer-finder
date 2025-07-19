@@ -34,6 +34,11 @@ class Connector(ABC):
 
 
     #------------------------------------ ORF matching methods ---------------------------------
+
+    @abstractmethod
+    def get_number_of_pairs_to_decide(self):
+        pass
+
     @abstractmethod
     def read_pairs_chunk(self, chunk_size):
         """
