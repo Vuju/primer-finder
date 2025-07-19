@@ -283,8 +283,8 @@ class OrfDecider:
         return seqs
 
     def _process_trivial_orfs(self, chunk):
-        chunk["orf_index"] = chunk.apply(lambda x: self.__set_trivial_orf_index(x), axis=1)
-        chunk["orf_aa"] = chunk.apply(lambda x: self.__set_trivial_orf_aa(x), axis=1)
+        chunk.loc[:, "orf_index"] = chunk.apply(lambda x: self.__set_trivial_orf_index(x), axis=1)
+        chunk.loc[:, "orf_aa"] = chunk.apply(lambda x: self.__set_trivial_orf_aa(x), axis=1)
         return chunk
 
 

@@ -532,9 +532,7 @@ class EyeBOLDConnector(Connector):
                   AND rm.primer_sequence = ?
             """
         if self.filter_column:
-            creation_query += f" AND s.{self.filter_column} = '{self.filter_name}';"
-        else:
-            creation_query += ";"
+            creation_query += f" AND s.{self.filter_column} = '{self.filter_name}'"
 
         override_query = """
             UPDATE primer_taxonomic_groups
@@ -583,6 +581,7 @@ class EyeBOLDConnector(Connector):
         logger.info("Setting up indexes: Orf Index (7/7)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_match_ids ON primer_taxonomic_groups(forward_match_id, reverse_match_id)")
         logger.info("Finished setting up indexes.")
+        conn.commit()
         conn.close()
 
     def remove_temp_table(self):
