@@ -179,7 +179,7 @@ class EyeBOLDConnector(Connector):
             # Collect data for all entries
             for entry in information:
                 # Unpack the tuple elements
-                specimen_id, forward_match, reverse_match, inter_primer_sequence, possible_orf = entry
+                specimen_id, forward_match, reverse_match, inter_primer_sequence, possible_orf, expected_distance = entry
 
                 if forward_match.is_mismatch() and reverse_match.is_mismatch():
                     continue
@@ -213,7 +213,8 @@ class EyeBOLDConnector(Connector):
                     specimen_id,
                     inter_primer_sequence,
                     _encrypt_po(possible_orf),
-                    self._set_flags(forward_match, reverse_match)
+                    self._set_matching_flag(forward_match, reverse_match),
+                    self._set_length_flag(forward_match, reverse_match, expected_distance)
                 ))
 
             # Execute batch insert for primer matches
@@ -231,8 +232,8 @@ class EyeBOLDConnector(Connector):
             cursor.executemany("""
                 INSERT OR REPLACE INTO primer_pairs
                 (forward_match_id, reverse_match_id, specimen_id, 
-                inter_primer_sequence, orf_candidates, matching_flags)
-                VALUES (?, ?, ?, ?, ?, ?)
+                inter_primer_sequence, orf_candidates, matching_flag, length_flag)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, primer_pairs_data)
             db.commit()
             return True
@@ -246,7 +247,7 @@ class EyeBOLDConnector(Connector):
             cursor.close()
             db.close()
 
-    def _set_flags(self, forward_match: MatchResultDTO, reverse_match: MatchResultDTO) -> int:
+    def _set_matching_flag(self, forward_match: MatchResultDTO, reverse_match: MatchResultDTO) -> int:
         # todo: let Match result DTOs calculate that themselves
         forward_absolute_cutoff = forward_match.quality_cutoff * 2 * len(forward_match.primer_sequence) # this expects 2 to be the default reward for a match!!
         reverse_absolute_cutoff = reverse_match.quality_cutoff * 2 * len(reverse_match.primer_sequence)
@@ -258,6 +259,16 @@ class EyeBOLDConnector(Connector):
             if reverse_match.score < reverse_absolute_cutoff:
                 return -2
         return 0
+
+    def _set_length_flag(self, forward_match: MatchResultDTO, reverse_match: MatchResultDTO, expected_length: int) -> int:
+        length = reverse_match.start_index - forward_match.end_index
+        diff = length - expected_length
+        if diff > 3:
+            return 1
+        elif diff < -3:
+            return -1
+        else:
+            return 0
 
     def __init_db_connection(self):
         if not os.path.exists(self.db_path):
@@ -368,7 +379,8 @@ class EyeBOLDConnector(Connector):
                     orf_candidates        INTEGER,
                     orf_index             INTEGER,
                     orf_aa                TEXT,
-                    matching_flags        INTEGER,
+                    matching_flag         INTEGER,
+                    length_flag           INTEGER,
                     PRIMARY KEY (forward_match_id, reverse_match_id),
                     FOREIGN KEY (forward_match_id) REFERENCES primer_matches(match_id),
                     FOREIGN KEY (reverse_match_id) REFERENCES primer_matches(match_id),
@@ -392,7 +404,8 @@ class EyeBOLDConnector(Connector):
             "orf_candidates": "INTEGER",
             "orf_index": "INTEGER",
             "orf_aa": "TEXT",
-            "matching_flags": "INTEGER"
+            "matching_flag": "INTEGER",
+            "length_flag": "INTEGER",
         }
         for column, data_type in required_columns.items():
             if column not in existing_columns:
@@ -409,7 +422,7 @@ class EyeBOLDConnector(Connector):
             batch_size = self.default_batch_size
         query = f"""
                 SELECT forward_match_id, reverse_match_id, specimen_id, inter_primer_sequence, 
-                orf_candidates, orf_index, orf_aa, matching_flags
+                orf_candidates, orf_index, orf_aa, matching_flag, length_flag
                 FROM primer_taxonomic_groups                
                 """
         offset = 0
@@ -486,7 +499,7 @@ class EyeBOLDConnector(Connector):
 
         matching_entries, found_sequences = self._fetch_any_related_sequences(current_entry, level, True)
         if found_sequences:
-            filtered_entries  = matching_entries[(matching_entries["orf_index"] >= 0) & (matching_entries["matching_flags"] == 0)]
+            filtered_entries  = matching_entries[(matching_entries["orf_index"] >= 0) & (matching_entries["matching_flag"] == 0)]
             if len(filtered_entries) > lower_reference_threshold:
                 # Randomly sample up to max_entries from this group
                 sample_size = min(upper_reference_threshold, len(filtered_entries))
@@ -591,7 +604,7 @@ class EyeBOLDConnector(Connector):
             related_query = f"""
                 SELECT forward_match_id, reverse_match_id, specimen_id,
                        inter_primer_sequence, orf_candidates, orf_index, 
-                       orf_aa, matching_flags
+                       orf_aa, matching_flag, length_flag
                 FROM primer_taxonomic_groups
                 WHERE {level} = ?
                 AND orf_index {"IS NOT NULL" if solved else "IS NULL"}

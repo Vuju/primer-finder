@@ -101,7 +101,7 @@ class PrimerFinder:
         sequence_metadata, dna_sequence, forward_match, reverse_match = sequence_object
 
         if dna_sequence is None:
-            return sequence_metadata, MatchResultDTO(), MatchResultDTO(), None, []
+            return sequence_metadata, MatchResultDTO(), MatchResultDTO(), None, [], query.distance
         dna_sequence = dna_sequence.strip()
         forward_search_interval, reverse_search_interval = (0, len(dna_sequence)), (0, len(dna_sequence))
 
@@ -155,7 +155,7 @@ class PrimerFinder:
         forward_match.quality_cutoff = query.forward_cutoff
         reverse_match.quality_cutoff = query.reverse_cutoff
 
-        return sequence_metadata, forward_match, reverse_match, inter_primer_region, possible_orfs
+        return sequence_metadata, forward_match, reverse_match, inter_primer_region, possible_orfs, query.distance
 
     def _compute_regex_match(self, primer, primer_regex, read):
         score = 0
