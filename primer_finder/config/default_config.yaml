@@ -48,7 +48,7 @@ parallelization:
   num_threads: null
   chunk_size: 100
 
-search_parameters:
+query_parameters:
   # example settings: ??? and ??? for the COI region in Arthropods.
   # Cutoffs are a percentage of the maximum score. If a match is better,
   # The search area for the other primer will be limited.
