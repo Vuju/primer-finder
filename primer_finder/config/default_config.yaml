@@ -2,14 +2,13 @@
 
 # File paths
 paths:
-  primer_information: "./primer_finder/config/primer_information.csv"
   muscle: null
   log_file: "primer-finder_log.log"
   input_file: null
 
 database:
   input_table_name: "specimen"
-  id_column_name: "specimenid"
+  id_column_name: "specimen_id"
   sequence_column_name: "nuc_san"
   database_batch_size: 50000
 
