@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Generator, Tuple, Any
 
-from matching.dtos.primer_data_dto import SearchParameterObject
+from matching.dtos.search_parameter_object import SearchParameterObject
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
 
