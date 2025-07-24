@@ -9,7 +9,7 @@ from primer_finder.config.config_loader import get_config_loader, get_search_par
 from primer_finder.orf.finder import list_possible_orf
 from primer_finder.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
-from primer_finder.matching.dtos.primer_data_dto import SearchParameterObject
+from primer_finder.matching.dtos.search_parameter_object import SearchParameterObject
 from primer_finder.matching.regex import find_exact_match
 from primer_finder.matching.smith_waterman import SmithWaterman
 

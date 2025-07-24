@@ -5,7 +5,7 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
-from primer_finder.matching.dtos.primer_data_dto import primer_info_from_config, SearchParameterObject
+from primer_finder.matching.dtos.search_parameter_object import primer_info_from_config, SearchParameterObject
 
 # Type alias for configuration
 Config = Dict[str, Any]
