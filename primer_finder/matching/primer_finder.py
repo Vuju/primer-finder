@@ -148,6 +148,11 @@ class PrimerFinder:
         inter_primer_region = dna_sequence[forward_match.end_index:reverse_match.start_index]
         _sequence_found = len(inter_primer_region.strip()) > 0
 
+        if not _sequence_found:
+            if (forward_match.score / len(forward_match.primer_sequence)) < (reverse_match.score / len(reverse_match.primer_sequence)):
+                forward_match = MatchResultDTO(0, "", 0, 0, query.forward_primer)
+            else:
+                reverse_match = MatchResultDTO(0, "", 0, 0, query.reverse_primer)
         possible_orfs = []
         if _sequence_found:
             possible_orfs = list_possible_orf(inter_primer_region, translation_table=query.protein_translation_table)
