@@ -16,7 +16,6 @@ Primer Finder locates forward and reverse primer sequences within DNA reads. It 
 - Configuration-based architecture with YAML support
 - Environment variable overrides for configuration
 - Multiprocessing support for improved performance
-- Handles compressed (gzip) and uncompressed input files
 - Comprehensive logging system
 
 ## Installation
@@ -32,6 +31,13 @@ Install dependencies:
 
 ```bash
 pip install -r requirements.txt
+```
+
+Alternatively, you can use the environment.yaml file to create a conda environment:
+
+```bash
+conda env create -f environment.yml
+conda activate primer-finder
 ```
 
 To use the ORF finder module, you will also need **"muscle"** for Multiple Sequence Alignment (MSA). Please use a version of 5.X with parameter names "-align" and "-output".
@@ -77,15 +83,22 @@ primer-finder --find-primers --input path/to/eyeBOLD.db --table_name specimen
 
 ## Configuration
 
-Primer Finder uses a configuration system based on YAML files. The default configuration is located at `primer_finder/config/default_config.yaml`.
+Primer Finder uses a configuration system based on YAML files. The default configuration is located at `primer_finder/config/default_config.yaml`. You can create a custom configuration file based on this template.
 
 ### Configuration Sections
 
-- **paths**: File paths for input, output, primer information, etc.
+- **paths**: File paths for input, muscle executable, and log file.
+- **database**: Database connection settings including table name, column names, and batch size
 - **logging**: Logging settings
 - **features**: Feature toggles for primer finder and ORF finder
-- **algorithm**: Algorithm parameters
+- **algorithm**: Algorithm parameters including:
+  - search_area: Limit for searching second primer when first is found
+  - gap_penalty: Penalty for single nucleotide gaps
+  - triplet_gap_penalty: Penalty for triplet gaps (preserves reading frame)
+  - end_of_read_bonus: Bonus for partial matches at read ends
+  - orf_matching thresholds: Controls sequence comparison limits
 - **parallelization**: Settings for parallel processing
+- **query_parameters**: Primer sequences, cutoff values, expected distances, and taxonomic filters
 
 ### Environment Variable Overrides
 
@@ -101,42 +114,21 @@ export PRIMER_FINDER_PARALLELIZATION__NUM_THREADS=4
 
 ## Input Format
 
-### Primer Information CSV
+### Database Connection
 
-The primer information file should be a CSV with the following format:
+The tool is designed to work with the eyeBOLD database created by https://github.com/TRojaner2013/eyeBOLD. It requires the specimen table from this database, which contains DNA sequences and associated metadata.
 
-```
-FORWARD_PRIMER_SEQ,REVERSE_PRIMER_SEQ,EXPECTED_DISTANCE
-```
-
-Example:
-```
-GGTCAACAAATCATAAAGATATTGG,TAAACTTCAGGGTGACCAAAAAATCA,650
-CCAGAGATTAGAGGGAACTGGATGA,GGGACGGTAAATCATTCAATATTATC,475
-```
-
-### Sequence File (Deprecated, may be re-implemented later)
-
-The tool supports FASTA format files and can handle both single-line and multi-line sequence entries. Both compressed (.gz) and uncompressed files are supported.
-
-### eyeBOLD database
-
-This tool was build to connect to the eyeBOLD_db created by https://github.com/TRojaner2013/eyeBOLD.
-Specifically, it requires the specimen table from this database.
+The database connection parameters can be configured in the YAML configuration file:
+- table_name: The name of the table containing sequences (default: "specimen")
+- id_column_name: The column containing sequence identifiers (default: "specimen_id")
+- sequence_column_name: The column containing DNA sequences (default: "nuc_san")
+- database_batch_size: Number of records to process in each batch (default: 50000)
 
 ## Output
 
-The file output (deprecated) is a CSV file containing:
-- Sequence metadata (BOLD ID, Read ID, taxonomic information)
-- Forward primer match details (score, matched sequence, position)
-- Reverse primer match details
-- Inter-primer sequence
-- Possible ORFs
-- Single, most likely ORF (when ORF finder is used)
-
-When using eyeBOLD, the database is extended:
+When using eyeBOLD, the database is extended with:
 - A "primer_matches" table
-  - This contains all the data on forward an reverse primer matches
+  - This contains all the data on forward and reverse primer matches
 - A "primer_pairs" table, containing:
   - The inter primer sequence
   - The most likely ORF
@@ -164,8 +156,7 @@ The ORF finder module identifies and resolves ambiguous open reading frames:
 ### Connectors
 
 The system uses a connector architecture to handle different input/output sources:
-- FileConnector (deprecated): Handles file-based input/output
-- DbConnector: Handles usage of eyeBOLD.
+- eyeBOLD_connector: Handles usage of eyeBOLD.
 - Other connectors can be implemented by extending the base Connector class.
 
 ## Performance Optimization
@@ -175,6 +166,7 @@ The system uses a connector architecture to handle different input/output source
 - Search space reduction based on expected primer distances
 - Regex-first approach before using more expensive alignment algorithms
 - Taxonomic-based grouping for efficient ORF resolution
+- Enhanced Smith-Waterman algorithm with triplet gap handling
 
 ## License
 
