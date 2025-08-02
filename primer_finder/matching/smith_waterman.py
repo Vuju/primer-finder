@@ -210,7 +210,7 @@ class SmithWaterman:
         aligned_read = ''.join(reversed(aligned_read))
 
         # There were 5 in 2.3M sequences, which managed to set their index to -1 instead of 0.
-        # Since their alignment worked otherwise, I set the index to min 0. Maybe their score is also off by 1 but who cares.
+        # Since their alignment worked otherwise, I set the index to min 0. Maybe their score is also off by 1 though.
         alignment_start_index_in_read = max(0, j - 2)
 
         return MatchResultDTO(max_score, aligned_read, alignment_start_index_in_read, alignment_start_index_in_read + len(aligned_read), primer_sequence)
