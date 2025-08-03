@@ -8,7 +8,7 @@ from typing import Generator, Any
 
 import pandas as pd
 
-from matching.dtos.primer_data_dto import SearchParameterObject
+from primer_finder.matching.dtos.search_parameter_object import SearchParameterObject
 from primer_finder.config import get_config_loader
 from primer_finder.connectors.base import Connector
 from primer_finder.matching.dtos.match_result_dto import MatchResultDTO

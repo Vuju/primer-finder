@@ -64,9 +64,13 @@ class ConfigLoader:
         try:
             with open(self.config_path, "r") as f:
                 return yaml.safe_load(f)
+        except FileNotFoundError:
+            raise ConfigurationError(f"Configuration file not found: {self.config_path}")
+        except yaml.YAMLError as e:
+            raise ConfigurationError(f"Invalid YAML in configuration file: {e}")
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration from {self.config_path}: {e}")
-    
+
     def _override_from_env(self) -> None:
         """
         Override configuration values with environment variables.

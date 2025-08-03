@@ -17,6 +17,7 @@ Primer Finder locates forward and reverse primer sequences within DNA reads. It 
 - Environment variable overrides for configuration
 - Multiprocessing support for improved performance
 - Comprehensive logging system
+- Robust error handling throughout the codebase
 
 ## Installation
 
