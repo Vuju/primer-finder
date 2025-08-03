@@ -155,7 +155,7 @@ class EyeBOLDConnector(Connector):
         db.commit()
         db.close()
 
-    def write_output(self, _, information):
+    def write_output(self, information):
         db = sqlite3.connect(self.db_path)
         try:
             db.execute('PRAGMA synchronous = NORMAL')
@@ -443,7 +443,6 @@ class EyeBOLDConnector(Connector):
         db.execute("PRAGMA journal_mode = WAL")
         db.execute('PRAGMA temp_store = MEMORY')
         try:
-            # Use INSERT OR REPLACE to handle conflicts
             insert_query = f'''
             UPDATE {"primer_taxonomic_groups" if tmp else "primer_pairs"}
             SET orf_index = ?, 
@@ -492,7 +491,8 @@ class EyeBOLDConnector(Connector):
             db.close()
             return pd.DataFrame()  # Return empty DataFrame on error
 
-    def fetch_sampled_solved_related_sequences(self, current_entry, level, lower_reference_threshold, upper_reference_threshold, random_seed: int = None):
+    def fetch_sampled_solved_related_sequences(self, current_entry, level, lower_reference_threshold,
+                                               upper_reference_threshold, random_seed: int = None):
         if random_seed is not None:
             random.seed(random_seed)
 

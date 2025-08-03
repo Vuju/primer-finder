@@ -1,7 +1,8 @@
 import logging
 import time
 from functools import partial
-from multiprocessing import Pool, Lock
+from multiprocessing import Pool
+from typing import Generator, Any
 
 from tqdm import tqdm
 
@@ -15,13 +16,13 @@ from primer_finder.matching.smith_waterman import SmithWaterman
 
 logger = logging.getLogger(__name__)
 
-lock = Lock()
-def _init_lock(l):
-    global lock
-    lock = l
-
-def chunker(iterable, sub_chunk_size):
-    """Collect items from an iterable into chunks of size sub_chunksize"""
+def chunker(iterable, sub_chunk_size: int) -> Generator[list, Any, None]:
+    """
+    Helper method that converts an itarable into a generator of chunks.
+    :param iterable: list to be chunked.
+    :param sub_chunk_size: size of each chunk.
+    :return: Generator of chunks.
+    """
     chunk = []
     for item in iterable:
         chunk.append(item)
@@ -40,8 +41,16 @@ class PrimerFinder:
                  custom_num_threads: int = None,
                  chunk_size: int = None,
                  search_area: float = None,
-                 search_parameter_groups = None,
+                 search_parameter_groups: list[SearchParameterObject] = None,
                  ):
+        """
+        A configured instance of PrimerFinder.
+        :param connector: a connector object to handle I/O operations.
+        :param custom_num_threads: Number of threads to use for parallel processing.
+        :param chunk_size: Size of each chunk to be processed in parallel.
+        :param search_area: Percentage of the distance between two primers used to reduce the search area for the second primer.
+        :param search_parameter_groups: List of SearchParameterObjects used as query parameters.
+        """
         config = get_config_loader().get_config()
 
         self.search_area = search_area or config["algorithm"]["search_area"]
@@ -70,12 +79,13 @@ class PrimerFinder:
                 results_buffer = []
                 for wbv in pool.imap(worker, sequence_chunks, chunksize=self.chunk_size//10):
                     results_buffer.extend(wbv)
-                    if len(results_buffer) >= self.db_batch_size:  # Adjust batch size
-                        if self.connector.write_output("", results_buffer):
+            # todo the buffering should be the responsibility of a connector, even though it makes connectors harder to write
+                    if len(results_buffer) >= self.db_batch_size:
+                        if self.connector.write_output(results_buffer):
                             results_buffer = []
                     pbar.update(self.chunk_size)
                 if results_buffer:
-                    while not self.connector.write_output("", results_buffer):
+                    while not self.connector.write_output(results_buffer):
                         time.sleep(5)
             pbar.close()
 

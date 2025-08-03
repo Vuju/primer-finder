@@ -5,7 +5,7 @@ from primer_finder.matching.dtos.match_result_dto import MatchResultDTO
 
 logger = logging.getLogger(__name__)
 
-def default_substitution_function(letter_in_primer, letter_in_read) -> float:
+def default_substitution_function(letter_in_primer: str, letter_in_read: str) -> float:
     """
     The default substitution function will return 2 if the primer character could be substituted by the sequence character match, -1 otherwise.
 
@@ -63,10 +63,10 @@ class SmithWaterman:
     """
 
     def __init__(self,
-        gap_penalty = None,
-        triplet_gap_penalty = None,
-        end_of_read_bonus_value = None,
-        sub_function = None
+        gap_penalty: int = None,
+        triplet_gap_penalty: int = None,
+        end_of_read_bonus_value: int = None,
+        sub_function: callable = None,
     ):
         """
         A configured SmithWaterman instance. As many parameters will be kept
@@ -89,7 +89,7 @@ class SmithWaterman:
         self.substitution_function = sub_function or default_substitution_function
         self.match_value = self.substitution_function("A", "A")
 
-    def align_partial(self, primer, super_sequence, search_interval):
+    def align_partial(self, primer: str, super_sequence: str, search_interval: tuple[int, int]) -> MatchResultDTO:
         """
         Align the primer sequence to the super sequence. You can set a search interval within the super sequence.
         :param primer: A primer sequence.
@@ -109,9 +109,9 @@ class SmithWaterman:
 
     def align(
             self,
-            primer_sequence,
-            dna_sequence,
-            are_ends_eligible_for_bonus
+            primer_sequence: str,
+            dna_sequence: str,
+            are_ends_eligible_for_bonus: tuple[bool, bool]
     ) -> MatchResultDTO:
         """
         An implementation of the Smith-Waterman algorithm for local sequence alignment.

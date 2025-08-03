@@ -1,6 +1,7 @@
+import logging
 import re
 
-def regex_builder(initialString):
+def regex_builder(initialString: str) -> str:
     """
     Converts a sequence in nucleic acid notation into a regular expression for DNA, by replacing e.g. "W" with "[AT]".
     :param initialString: A sequence in nucleic acid notation.
@@ -43,11 +44,13 @@ def regex_builder(initialString):
             case 'N':
                 regexString += "."
             case _:
-                print(f"Unable to process primer. Didn't find {char}.")
+                logger = logging.getLogger(__name__)
+                logger.error(f"Unable to process primer. Didn't find {char}.")
     return regexString
 
 
-def find_exact_match(regex, read):
+def find_exact_match(regex: str,
+                     read: str) -> tuple[int, int]:
     """
     A capsule function for re.search().span().
     Will return -1, -1 instead of None though.
