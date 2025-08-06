@@ -38,7 +38,7 @@ algorithm:
   orf_matching_lower_threshold: 10
   orf_matching_upper_threshold: 50
 
-  # E-value for BLAST searches
+  # E-value for HMM searches
   e_value: 1000
 
 # Parallelization settings
